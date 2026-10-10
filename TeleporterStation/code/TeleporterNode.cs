@@ -1,7 +1,10 @@
+using System;
 using System.Collections;
 using System.Linq;
 using Timberborn.BaseComponentSystem;
 using Timberborn.BlockSystem;
+using Timberborn.BlockingSystem;
+using Timberborn.Buildings;
 using Timberborn.EntitySystem;
 using Timberborn.Goods;
 using Timberborn.InventorySystem;
@@ -13,7 +16,8 @@ using UnityEngine;
 namespace TeleporterStation;
 
 // design: DESIGN.md#lifecycle-and-persistence
-public class TeleporterNode : BaseComponent, IAwakableComponent, IFinishedStateListener, IPersistentEntity
+public class TeleporterNode : BaseComponent, IAwakableComponent, IFinishedStateListener,
+    IFinishedPausable, IPersistentEntity
 {
     private const string HorizonNodeName = "Horizon";
     private const string ArmsNodeName = "Arms";
@@ -31,6 +35,7 @@ public class TeleporterNode : BaseComponent, IAwakableComponent, IFinishedStateL
 
     private readonly TeleporterNetwork _network;
     private BlockObject _blockObject;
+    private BlockableObject _blockableObject;
     private Inventory _chargeStore;
     private int _crossingsSinceCharge;
     private GameObject _horizon;
@@ -63,6 +68,10 @@ public class TeleporterNode : BaseComponent, IAwakableComponent, IFinishedStateL
 
     public bool IsCharged => IsFinished && _charged;
 
+    // live read of the one blocker set vanilla consumers themselves
+    // read: DESIGN.md#pause
+    internal bool IsPaused => !_blockableObject.IsUnblocked;
+
     public int Charges => _chargeStore != null ? _chargeStore.AmountInStock(ExtractGoodId) : 0;
 
     internal Inventory ChargeStore => _chargeStore;
@@ -76,6 +85,7 @@ public class TeleporterNode : BaseComponent, IAwakableComponent, IFinishedStateL
     public void Awake()
     {
         _blockObject = GetComponent<BlockObject>();
+        _blockableObject = GetComponent<BlockableObject>();
         // resolve by component name: DESIGN.md#charges-and-the-charge-store
         _chargeStore = GetComponentsAllocating<Inventory>()
             .FirstOrDefault(s => s.ComponentName == TeleporterChargeStoreInitializer.StoreComponentName);
@@ -88,6 +98,10 @@ public class TeleporterNode : BaseComponent, IAwakableComponent, IFinishedStateL
         _charged = HasStock();
         _network.RegisterStation(Coordinates, this);
         _network.Register(Coordinates, _charged);
+        // sync a save-restored pause; the events then drive flips: DESIGN.md#pause
+        _network.SetStationPaused(Coordinates, IsPaused);
+        _blockableObject.ObjectBlocked += OnBlockableChanged;
+        _blockableObject.ObjectUnblocked += OnBlockableChanged;
         _network.PairingChanged += OnPairingChanged;
         _network.NetworkLivenessChanged += OnNetworkLivenessChanged;
         SetPaired(_network.NetworkDistrict()?.District.CenterNodeId ?? -1);
@@ -101,6 +115,8 @@ public class TeleporterNode : BaseComponent, IAwakableComponent, IFinishedStateL
     public void OnExitFinishedState()
     {
         IsFinished = false;
+        _blockableObject.ObjectBlocked -= OnBlockableChanged;
+        _blockableObject.ObjectUnblocked -= OnBlockableChanged;
         if (_chargeStore != null)
         {
             _chargeStore.InventoryStockChanged -= OnStockChanged;
@@ -150,6 +166,14 @@ public class TeleporterNode : BaseComponent, IAwakableComponent, IFinishedStateL
             ApplyPaired();
         }
         _network.ScanAutoRefills();
+    }
+
+    // any BlockableObject blocker: the player pause button, or automation:
+    // DESIGN.md#pause
+    private void OnBlockableChanged(object sender, EventArgs e)
+    {
+        _network.SetStationPaused(Coordinates, IsPaused);
+        ApplyPaired();
     }
 
     internal void RelayOut(int amount)
@@ -276,8 +300,8 @@ public class TeleporterNode : BaseComponent, IAwakableComponent, IFinishedStateL
         {
             return;
         }
-        // glow only while charged in a live network: DESIGN.md#network-liveness
-        var active = _paired && _charged && _network.IsNetworkLive();
+        // glow only while charged, unpaused, in a live network: DESIGN.md#pause
+        var active = _paired && _charged && !IsPaused && _network.IsNetworkLive();
         _horizon.SetActive(active);
         _arms.SetActive(active);
         _animator.Enabled = active;

@@ -30,6 +30,7 @@ public class TeleporterHighlightService : ILoadableSingleton, ILateUpdatableSing
     {
         _eventBus.Register(this);
         _network.PairingChanged += OnPairingChanged;
+        _network.StationPauseChanged += OnStationPauseChanged;
     }
 
     [OnEvent]
@@ -47,6 +48,12 @@ public class TeleporterHighlightService : ILoadableSingleton, ILateUpdatableSing
     }
 
     private void OnPairingChanged(Vector3Int coordinates, int districtCenterNodeId)
+    {
+        _dirty = true;
+    }
+
+    // a pause flip may not change any pairing: DESIGN.md#pause
+    private void OnStationPauseChanged(Vector3Int coordinates)
     {
         _dirty = true;
     }
@@ -69,6 +76,11 @@ public class TeleporterHighlightService : ILoadableSingleton, ILateUpdatableSing
         }
         foreach (var station in _network.NetworkMembers())
         {
+            // paused stations are off: DESIGN.md#pause
+            if (station.IsPaused)
+            {
+                continue;
+            }
             _highlighter.HighlightSecondary(station, _selected.HorizonColor);
             _highlighted.Add(station);
         }

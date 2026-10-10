@@ -4,6 +4,19 @@ Player-visible changes per version, written for the Workshop. Internal
 work (docs, tooling, process) stays out. Costs are quoted from the
 blueprints and verified at each release.
 
+## 0.3.0
+
+Teleporters can be paused.
+
+### New
+
+- Pause a teleporter from its panel, or with the P key. A paused
+  teleporter's wormhole is off and nothing moves its extract. No
+  travel, no deliveries, and the siphon neither pulls nor gives.
+  Unpausing puts everything back.
+- Levers, timers, and sensors can pause teleporters automatically,
+  like any other building.
+
 ## 0.2.0
 
 Teleporters now run on extract and live on one district.

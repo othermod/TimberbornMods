@@ -35,6 +35,8 @@ public class TeleporterNetwork : ILoadableSingleton, IPostLoadableSingleton,
 
     private readonly HashSet<Vector3Int> _nodes = new();
     private readonly HashSet<Vector3Int> _chargedNodes = new();
+    // stations the vanilla building pause took offline: DESIGN.md#pause
+    private readonly HashSet<Vector3Int> _pausedNodes = new();
     private readonly Dictionary<Vector3Int, TeleporterNode> _stations = new();
     private readonly Dictionary<(Vector3Int, Vector3Int), NavMeshEdge> _edges = new();
     private readonly HashSet<(Vector3Int, Vector3Int)> _pairs = new();
@@ -73,6 +75,9 @@ public class TeleporterNetwork : ILoadableSingleton, IPostLoadableSingleton,
 
     // fires after the refresh: DESIGN.md#network-liveness
     internal event System.Action NetworkLivenessChanged;
+
+    // fires after the refresh: DESIGN.md#pause
+    internal event System.Action<Vector3Int> StationPauseChanged;
 
     internal bool IsNetworkLive()
     {
@@ -292,6 +297,7 @@ public class TeleporterNetwork : ILoadableSingleton, IPostLoadableSingleton,
         if (_nodes.Remove(coordinates))
         {
             _chargedNodes.Remove(coordinates);
+            _pausedNodes.Remove(coordinates);
             _pairedVisuals.Remove(coordinates);
             RefreshLinks();
         }
@@ -312,6 +318,22 @@ public class TeleporterNetwork : ILoadableSingleton, IPostLoadableSingleton,
                       (charged ? "charged, extract in store" : "out of extract, going offline"));
         RefreshLinks();
         StationChargeChanged?.Invoke(coordinates);
+    }
+
+    // the vanilla building pause, adopted: DESIGN.md#pause
+    public void SetStationPaused(Vector3Int coordinates, bool paused)
+    {
+        if (!_nodes.Contains(coordinates))
+        {
+            return;
+        }
+        var changed = paused ? _pausedNodes.Add(coordinates) : _pausedNodes.Remove(coordinates);
+        if (!changed)
+        {
+            return;
+        }
+        RefreshLinks();
+        StationPauseChanged?.Invoke(coordinates);
     }
 
     // DESIGN.md#crossing-detection-and-billing
@@ -344,6 +366,7 @@ public class TeleporterNetwork : ILoadableSingleton, IPostLoadableSingleton,
             if (coordinates == requester
                 || !BelongsToNetwork(coordinates)
                 || !station.IsExtractSource
+                || station.IsPaused
                 || !IsReachableByRealPath(coordinates))
             {
                 continue;
@@ -389,6 +412,7 @@ public class TeleporterNetwork : ILoadableSingleton, IPostLoadableSingleton,
             foreach (var (coordinates, station) in _stations)
             {
                 if (!BelongsToNetwork(coordinates)
+                    || station.IsPaused
                     || station.Charges > AutoRefillThreshold)
                 {
                     continue;
@@ -503,7 +527,7 @@ public class TeleporterNetwork : ILoadableSingleton, IPostLoadableSingleton,
     }
 
     // the refresh: the reachability map, the host district, then the edge
-    // diff (all charged members of the network, all pairs)
+    // diff (all charged, unpaused members of the network, all pairs)
     private void RefreshLinks()
     {
         _realClaim = BuildClaimMap();
@@ -549,12 +573,13 @@ public class TeleporterNetwork : ILoadableSingleton, IPostLoadableSingleton,
         _conflicted = conflicted;
         _networkDistrict = host;
 
-        // live: some path-connected member holds extract. A dark network
-        // forms no links at all: with the door member dry nobody can walk
-        // in, so remote-to-remote wormholes would be an unreachable
-        // island glowing as if it worked
+        // live: some path-connected member holds extract and is not
+        // paused. A dark network forms no links at all: with the door
+        // member dry (or paused) nobody can walk in, so remote-to-remote
+        // wormholes would be an unreachable island glowing as if it worked
         var live = host != -1
-            && _chargedNodes.Any(c => _realClaim.ContainsKey(_nodeIdService.GridToId(c)));
+            && _chargedNodes.Any(c => !_pausedNodes.Contains(c)
+                && _realClaim.ContainsKey(_nodeIdService.GridToId(c)));
         var livenessChanged = live != _live;
         if (_loadComplete && livenessChanged)
         {
@@ -571,13 +596,14 @@ public class TeleporterNetwork : ILoadableSingleton, IPostLoadableSingleton,
         {
             foreach (var coordinates in _chargedNodes)
             {
-                if (!BelongsToNetwork(coordinates))
+                if (_pausedNodes.Contains(coordinates) || !BelongsToNetwork(coordinates))
                 {
                     continue;
                 }
                 foreach (var other in _chargedNodes)
                 {
-                    if (other != coordinates && BelongsToNetwork(other))
+                    if (other != coordinates && !_pausedNodes.Contains(other)
+                        && BelongsToNetwork(other))
                     {
                         desired.Add(Canonical(coordinates, other));
                     }
