@@ -1,0 +1,6 @@
+dist/
+obj/
+bin/
+__pycache__/
+*.pyc
+.freebuff/

@@ -1,0 +1,17 @@
+ID,Text,Comment
+Building.Teleporter.DisplayName,Teleporter Station,
+Building.Teleporter.Description,Allows instant travel between any two points on the map.,
+Building.Teleporter.FlavorDescription,"Mind the puddle. It's deeper than it looks.",
+Teleporter.Transits,Transits,
+Teleporter.Source.Enable,Enable wormhole siphon,Panel button: designates this path-connected station as the source the network's siphon draws from
+Teleporter.Source.Disable,Disable wormhole siphon,Panel button: removes this station's extract-source designation
+Teleporter.Status.OutOfExtract,Out of extract. Deliver extract to refill it.,Status icon text for a dry station a district path reaches
+Teleporter.Status.OutOfExtract.Haulers,Out of extract. Requires haulers to function.,Status icon text for a dry station a district path reaches while the district has no Hauling Post
+Teleporter.Status.OutOfExtract.Short,Teleporter out of extract,Short alert text for the notification ticker (vanilla shorts carry no period)
+Teleporter.Status.OutOfExtract.Remote.NoSource,"Out of extract. Only a wormhole siphon can restart this teleporter, but no teleporter on the district's paths is set as an extract source.",Status icon text for a dry station no path reaches while nothing is designated as a siphon source
+Teleporter.Status.OutOfExtract.Remote.NoneStocked,"Out of extract. Only a wormhole siphon can restart this teleporter, but no source has extract to spare.",Status icon text for a dry station no path reaches while its designated sources cannot serve
+Teleporter.NetworkCount,Teleporters on this network: {0},Panel line: how many stations belong to this network
+Teleporter.Status.Conflict,"Teleporters stand on the paths of more than one district. Demolish every teleporter of one district to bring the network back.",Status icon text while a save from a multi-district version holds teleporters on several districts
+Teleporter.Status.Conflict.Short,Teleporters on several districts,Ticker text for the conflict status (vanilla shorts carry no period)
+Teleporter.Status.NetworkOffline,"No path-connected teleporter is charged. Refill one to restore the network.",Status icon text for a charged station beyond the paths while the network is dark
+Teleporter.Status.NetworkOffline.Short,Teleporter network offline,Ticker text for the dark-network status (vanilla shorts carry no period)

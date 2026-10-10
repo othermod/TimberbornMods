@@ -1,0 +1,10 @@
+{
+  "AuthorName": "othermod",
+  "Name": "Teleporter Station",
+  "Version": "0.2.0",
+  "Id": "othermod.TeleporterStation",
+  "MinimumGameVersion": "1.1.0.0",
+  "Description": "Adds a 1x1 teleporter station. A beaver instantly transports from one station to any other station of the same network.\n\n[h1]Using it[/h1]\n[list]\n[*]Unlocks in the Paths menu for 5000 science. Costs 20 Planks, 20 Metal Blocks and 50 Extract.\n[*]Teleporters live on one district: the first station placed on a district's paths binds them there. A teleporter cannot be placed on any other district's paths (for now).\n[*]Every charged station of that district forms one network. Walk onto one, walk off any other.\n[*]Stations work away from paths too: one on unclaimed ground joins the network through the wormhole.\n[*]Membership is automatic. There is no connect button and no disconnect; demolish a station to remove it.\n[/list]\n\n[h1]Looks[/h1]\n[list]\n[*]The network's event horizon takes its color from the district.\n[*]Spiral arms spin inside the horizon. A dry station is an inert ring.\n[*]Iron Teeth get forged plank ramps. Folktails get walnut.\n[/list]\n\n[h1]Details[/h1]\n[list]\n[*]Stations run on extract: one per ten crossings, drawn at the teleporter the beaver walks into. 100 max, hauled by the district.\n[*]Wormhole siphon: a station that runs low pulls extract from a station you designate as the source.\n[*]No dependencies.\n[*]Safe to add to an existing save. Removing the mod removes the stations and nothing else.\n[*]Tested on Timberborn 1.1.2.7.\n[/list]\n\n[h1]Known issue[/h1]\nOlder versions could strand a beaver mid-teleport, usually when a teleporter was removed. Current versions rework how teleport travel works and should fix it. If you catch it anyway, describe what was happening in the comments.\n\n[h1]Future plans[/h1]\n[list]\n[*]Support for teleporters on more than one district.\n[/list]",
+  "RequiredMods": [],
+  "OptionalMods": []
+}

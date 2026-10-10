@@ -1,0 +1,29 @@
+<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+
+  <!-- Shared settings for every mod csproj; a mod csproj is only this import
+       (the assembly name defaults to the csproj file name). -->
+  <PropertyGroup>
+    <TargetFramework>netstandard2.1</TargetFramework>
+    <LangVersion>preview</LangVersion>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <DebugSymbols>true</DebugSymbols>
+    <DebugType>embedded</DebugType>
+    <!-- Overridable: dotnet build -p:GameManaged=/path/to/Timberborn_Data/Managed -->
+    <GameManaged Condition="'$(GameManaged)' == ''">$(HOME)/.local/share/Steam/steamapps/common/Timberborn/Timberborn_Data/Managed</GameManaged>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Publicizes private game members at compile time; runtime assemblies stay untouched. -->
+    <PackageReference Include="BepInEx.AssemblyPublicizer.MSBuild" Version="0.4.3" PrivateAssets="all" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Compile-time references only; never ship game DLLs with the mod. -->
+    <Reference Include="$(GameManaged)/Timberborn.*.dll" Publicize="true"><Private>false</Private></Reference>
+    <Reference Include="$(GameManaged)/Unity*.dll" Publicize="true"><Private>false</Private></Reference>
+    <Reference Include="$(GameManaged)/Bindito.*.dll" Publicize="true"><Private>false</Private></Reference>
+    <Reference Include="$(GameManaged)/System.Collections.Immutable.dll"><Private>false</Private></Reference>
+  </ItemGroup>
+
+</Project>
