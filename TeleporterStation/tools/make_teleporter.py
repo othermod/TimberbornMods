@@ -6,7 +6,11 @@ Timberborn's Timbermesh format (decompiled from Timberborn.Timbermesh[DTO].dll, 
     Model { int32 version=1; string name=2; repeated Node nodes=3; }
     Node  { int32 parent=1; string name=2; Vector3Float position=3; QuaternionFloat rotation=4;
             Vector3Float scale=5; int32 vertexCount=6; repeated VertexProperty vertexProperties=7;
-            repeated Mesh meshes=8; }
+            repeated Mesh meshes=8; repeated VertexAnimation vertexAnimations=9;
+            repeated NodeAnimation nodeAnimations=10; }
+  There is no per-node visibility flag anywhere in the format, and
+  TimbermeshImporter creates every node GameObject active (its name is the
+  node name), so hidden helpers like the Orb must be deactivated by mod code.
     VertexProperty { string name=1; ScalarType scalarType=2; int32 dimension=3; bytes data=4; }
     Mesh { repeated int32 indices=1 (packed); string material=2; }
   Vertex properties consumed by StaticMeshBuilder by name: "position"(float3), "normal"(float3),
@@ -21,6 +25,10 @@ ring = one corrugation band of the faction painted metal wrapping the tube,
 chevrons = the dark grunge band, ramps = the faction wood plank block,
 event horizon = a constant dark texel on the painted metal ("void" look; the water
 materials' shader only works through the game's own water rendering, not on meshes).
+The ring platform model (RingPlatform.*, the ring building's own model; the gate
+model stays with the station) reuses the same zones: plate top = the torus's
+hex-tread zone, rim = the painted-metal panel texel, route-ring inscription and
+orb = the flat plaster texel the horizon tints through.
 """
 
 import math
@@ -58,6 +66,50 @@ SWAY_DEG, PULSE = 16.0, 0.05            # ±16° arm sway, ±5% radial breathing
 SPIRAL_ARMS, SPIRAL_TWIST = 4, 1.6      # arm count / rim-to-eye curl (radians)
 ARM_INNER, ARM_OUTER, ARM_SEG = 0.14, 0.94, 8   # arm radial span (× HORIZON_R)
 ARM_HALF_WIDTH = 0.10                   # arm angular half-width at the eye (rad)
+# Traveller body: the node is hidden on the building (both node components hide
+# it at Awake); the transit visual clones it as the in-flight body and aims its
+# local +Z at the exit, so the rounded front cap leads and the taper trails.
+# The clone also stretches Z (StreamStretch 2.5) and scales by
+# RingNetwork.TravellerScale (0.4). The front cap is a shallow ellipsoid cap
+# (ORB_FRONT radii deep) because a full hemisphere stretched 2.5x reads as a
+# pointed football nose; 0.4 radii lands the stretched nose about as long as
+# it is wide, a blunt dome.
+ORB_R = 0.42
+ORB_FRONT = 0.4                   # front cap depth in fat radii ahead of the equator
+ORB_TAIL = 1.25                   # tail length in fat radii behind the equator
+ORB_LAT, ORB_LON = 16, 24         # profile bands total (8 per arm) / around
+
+# Ring platform (the ring building's own model; the station keeps the gate):
+# a flush circular plate set into the tile, measured against the game's nav:
+# the ring tile's walk node sits at terrain level (Player.log corner Y), so
+# the top is a thin lip above ground and beaver feet rest on it. The plate
+# sinks below terrain so no face is coplanar with it (the rails' shimmer
+# guard, applied to the ground).
+PLATFORM_R = 0.47                  # fills the 1x1 tile as a circle
+PLATFORM_H = 0.05                  # clears the game's dirt tile top (0.04)
+PLATFORM_SINK = 0.02               # bottom below terrain (no coplanar face)
+PLATFORM_SEG = 48
+# The route indicator: five concentric pale annuli (the Stargate platform's
+# inert inscription look), raised 4 mm above the plate so feet pass over
+# them. RingNode shows the node only while the route can carry someone.
+ROUTE_RING_RADII = (0.13, 0.19, 0.25, 0.31, 0.37)
+ROUTE_RING_WIDTH = 0.022
+ROUTE_RING_RISE = 0.004
+ROUTE_RING_CENTER_R = 0.07
+# Hex-tread UV planar mapping for the plate top: the torus tread zone with
+# fold seams every ~0.7 world units, so grout lines land on the folds.
+TREAD_UV_FREQ = 1.43
+# Transport rings (the sweep effect's clone source): five solid tori hugging
+# the plate edge, stacked with gaps like slices of a cylinder. Their crown
+# stays inside the plate's 0.47 rim and their bore clears the 0.37
+# inscription ring. The node hides
+# on the building; the transit visual clones it AT THE PLATE'S TOP CENTER
+# (the RouteRing node's position) and sweeps it up out of the plate
+# (dematerialize) or down into it (rematerialize), so the geometry starts at
+# the node origin.
+TR_MAJOR_R, TR_MINOR_R = 0.4125, 0.0375
+TR_PITCH, TR_COUNT, TR_BASE = 0.135, 5, 0.0
+TR_MAJOR_SEG, TR_MINOR_SEG = 32, 12
 
 VARIANTS = {
     "IronTeeth": {
@@ -242,6 +294,79 @@ def horizon_arms(variant: dict):
                     corners.append((r * math.cos(phi), r * math.sin(phi), z))
                 add_quad(corners, (0.0, 0.0, 1.0))
     return verts, norms, uvs, [(indices, f"{HORIZON_MATERIAL}.{variant['faction']}")]
+
+
+def orb(variant: dict):
+    """The traveller's body: a closed teardrop on the same flat plaster texel
+    as the horizon, so the runtime clone can tint it to the district hue and
+    light it through the game's own highlight emission channel (MaterialColorer
+    writes _EmissionColor on any EnvironmentURP material; verified against the
+    game's highlight pipeline). The axis is +Z: a shallow rounded front cap
+    (ORB_FRONT radii deep) faces forward and the profile tapers behind the
+    equator over ORB_TAIL radii to a tail tip, because the transit visual
+    aims the clone's +Z at the exit ring before stretching Z, so the blunt
+    end leads the flight (a full hemisphere would stretch into a football
+    nose). Poles (front tip and tail tip) get dedicated triangles: a quad
+    row would collapse into the degenerate triangles the model guard
+    rejects. Winding follows the horizon disc's (CCW seen from outside);
+    normals come from the revolving profile, n = normalize((radial, -r')),
+    continuous at the equator where the cap's slope and the taper's slope
+    both flatten to zero."""
+    uv = PLASTER_UV
+    verts, norms, uvs, idx = [], [], [], []
+
+    def add(x, y, z, nx, ny, nz):
+        verts.append((x, y, z))
+        norms.append((nx, ny, nz))
+        uvs.append(uv)
+        return len(verts) - 1
+
+    front = add(0.0, 0.0, ORB_FRONT * ORB_R, 0.0, 0.0, 1.0)
+    tip = add(0.0, 0.0, -ORB_TAIL * ORB_R, 0.0, 0.0, -1.0)
+    half = ORB_LAT // 2
+
+    def profile():
+        # (z, r, dr/dz) rows from just past the front pole to just short of
+        # the tail tip; the cap is the ellipsoid z = FRONT cos, r = R sin,
+        # the equator row closes it, and the taper r = R cos(pi s / 2)
+        # meets it with matching zero slope
+        rows = []
+        cap_a = ORB_FRONT * ORB_R
+        for k in range(1, half + 1):
+            ang = math.pi / 2 * k / half
+            rows.append((cap_a * math.cos(ang), ORB_R * math.sin(ang),
+                         -(ORB_R / cap_a) * math.cos(ang) / math.sin(ang)))
+        for i in range(1, half):
+            s = i / half
+            rows.append((-ORB_TAIL * ORB_R * s,
+                         ORB_R * math.cos(math.pi / 2 * s),
+                         math.pi / (2 * ORB_TAIL)
+                         * math.sin(math.pi / 2 * s)))
+        return rows
+
+    rings = []
+    for z, r, dr in profile():
+        row = []
+        for i in range(ORB_LON):
+            phi = math.tau * i / ORB_LON
+            # y takes the negative sine so the sphere's row emission below
+            # keeps its CCW-outward winding after the Y-axis to Z-axis remap
+            x, y = r * math.cos(phi), -r * math.sin(phi)
+            rho = math.sqrt(x * x + y * y)
+            nx, ny, nz = x / rho, y / rho, -dr
+            length = math.sqrt(nx * nx + ny * ny + nz * nz)
+            row.append(add(x, y, z, nx / length, ny / length, nz / length))
+        rings.append(row)
+
+    for i in range(ORB_LON):
+        i2 = (i + 1) % ORB_LON
+        idx.extend([front, rings[0][i2], rings[0][i]])
+        idx.extend([tip, rings[-1][i], rings[-1][i2]])
+        for j in range(len(rings) - 1):
+            a, b = rings[j][i], rings[j][i2]
+            c, d = rings[j + 1][i2], rings[j + 1][i]
+            idx.extend([a, b, c, a, c, d])
+    return verts, norms, uvs, [(idx, f"{HORIZON_MATERIAL}.{variant['faction']}")]
 
 
 def plinth(variant: dict):
@@ -454,6 +579,164 @@ def _rail_box(verts, norms, uvs, idx, p0, p1, half, uv):
         for p in quad_pts:
             verts.append(p); norms.append(n); uvs.append(uv)
         idx.extend([base, base + 1, base + 2, base, base + 2, base + 3])
+
+
+def _circle_point(cx: float, cz: float, r: float, a: float,
+                  y: float) -> tuple[float, float, float]:
+    """Point on an X-Z circle using the same axis substitution as the proven
+    torus/horizon windings (x = cos a, z = -sin a): their Unity-facing
+    chirality carries over, so fans keep facing up and walls keep facing
+    outward without guesswork."""
+    return (cx + r * math.cos(a), y, cz - r * math.sin(a))
+
+
+def platform_base(variant: dict):
+    """The circular plate the ring building becomes: hex-tread top
+    (the torus's tread zone, mapped planarly with fold seams so the grout
+    lines land on the folds), painted-metal rim wall, bottom sunk below
+    terrain so no face is coplanar with it. The top clears the game's dirt
+    tile (DirtPath children render under the plate: DESIGN.md#ring-pairs),
+    so the plate reads as set into a path."""
+    verts, norms, uvs, idx = [], [], [], []
+    tread_material = variant["tread_material"]
+    rim_material = variant["ring_material"]
+    rim_uv = (variant["rail_u"], 0.5)
+    seg = PLATFORM_SEG
+    y_top, y_bot = PLATFORM_H, -PLATFORM_SINK
+
+    def add(p, n, uv):
+        verts.append(p); norms.append(n); uvs.append(uv)
+        return len(verts) - 1
+
+    def tread_uv(x, z):
+        def fold(t):
+            m = (t * TREAD_UV_FREQ) % 2.0
+            return m if m <= 1.0 else 2.0 - m
+        return (0.762 + fold(x) * 0.235, 0.248 + fold(z) * 0.181)
+
+    def tread_circle(r):
+        return [add(_circle_point(0.5, 0.5, r, a, y_top),
+                    (0.0, 1.0, 0.0), tread_uv(0.5 + r * math.cos(a),
+                                              0.5 - r * math.sin(a)))
+                for a in (math.tau * k / seg for k in range(seg))]
+
+    center = add((0.5, y_top, 0.5), (0.0, 1.0, 0.0), tread_uv(0.5, 0.5))
+    inner = tread_circle(PLATFORM_R * 0.5)
+    outer = tread_circle(PLATFORM_R)
+    for k in range(seg):
+        k2 = (k + 1) % seg
+        idx.extend([center, inner[k], inner[k2]])
+        idx.extend([inner[k], outer[k], outer[k2], inner[k],
+                    outer[k2], inner[k2]])
+    for k in range(seg):
+        k2 = (k + 1) % seg
+        base = len(verts)
+        for a in (math.tau * k / seg, math.tau * k2 / seg):
+            for y in (y_bot, y_top):
+                verts.append(_circle_point(0.5, 0.5, PLATFORM_R, a, y))
+                norms.append(_radial(a))
+                uvs.append(rim_uv)
+        # torus quad order under the substitution: (k, bot), (k2, bot),
+        # (k2, top), (k, top) reads outward with profile increasing
+        idx.extend([base, base + 2, base + 3, base, base + 3, base + 1])
+    bcenter = add((0.5, y_bot, 0.5), (0.0, -1.0, 0.0), rim_uv)
+    bring = [add(_circle_point(0.5, 0.5, PLATFORM_R, math.tau * k / seg,
+                               y_bot), (0.0, -1.0, 0.0), rim_uv)
+             for k in range(seg)]
+    for k in range(seg):
+        k2 = (k + 1) % seg
+        idx.extend([bcenter, bring[k2], bring[k]])
+    return verts, norms, uvs, [(idx, tread_material)]
+
+
+def _radial(a: float) -> tuple[float, float, float]:
+    """Outward X-Z normal at circle angle a (matching _circle_point's
+    x = cos, z = -sin substitution)."""
+    return (math.cos(a), 0.0, -math.sin(a))
+
+
+def route_rings(variant: dict):
+    """The route indicator: five concentric pale annuli plus a center disc,
+    raised ROUTE_RING_RISE above the plate (feet pass over them). The
+    Stargate platform's inert inscription; RingNode activates the node only
+    while the route can carry someone. Geometry is local to the node (the
+    node sits at the plate's top center). Same proven winding as the plate:
+    fan-chirality triangles face up, profile-increasing walls face out."""
+    uv = PLASTER_UV
+    verts, norms, uvs, idx = [], [], [], []
+    seg = PLATFORM_SEG
+
+    def add(p, n):
+        verts.append(p); norms.append(n); uvs.append(uv)
+        return len(verts) - 1
+
+    def circle(r, y):
+        return [add(_circle_point(0.0, 0.0, r, math.tau * k / seg, y),
+                    (0.0, 1.0, 0.0)) for k in range(seg)]
+
+    def band(r0, r1):
+        ring0, ring1 = circle(r0, ROUTE_RING_RISE), circle(r1, ROUTE_RING_RISE)
+        for k in range(seg):
+            k2 = (k + 1) % seg
+            idx.extend([ring0[k], ring1[k], ring1[k2],
+                        ring0[k], ring1[k2], ring0[k2]])
+
+    def wall(r, y0, y1):
+        for k in range(seg):
+            k2 = (k + 1) % seg
+            base = len(verts)
+            for a in (math.tau * k / seg, math.tau * k2 / seg):
+                for y in (y0, y1):
+                    verts.append(_circle_point(0.0, 0.0, r, a, y))
+                    norms.append(_radial(a))
+                    uvs.append(uv)
+            idx.extend([base, base + 2, base + 3, base, base + 3, base + 1])
+
+    for radius in ROUTE_RING_RADII:
+        band(radius - ROUTE_RING_WIDTH / 2, radius + ROUTE_RING_WIDTH / 2)
+        wall(radius + ROUTE_RING_WIDTH / 2, 0.0, ROUTE_RING_RISE)
+    center = add((0.0, ROUTE_RING_RISE, 0.0), (0.0, 1.0, 0.0))
+    inner = circle(ROUTE_RING_CENTER_R, ROUTE_RING_RISE)
+    for k in range(seg):
+        k2 = (k + 1) % seg
+        idx.extend([center, inner[k], inner[k2]])
+    wall(ROUTE_RING_CENTER_R, 0.0, ROUTE_RING_RISE)
+    return verts, norms, uvs, [(idx, f"{HORIZON_MATERIAL}.{variant['faction']}")]
+
+
+def transport_rings(variant: dict):
+    """The sweep effect's body: five solid tori hugging the plate edge,
+    stacked with gaps. The gate torus's outward winding carries over via
+    the same axis substitution _circle_point documents (x = cos a,
+    z = -sin a), which is a proper rotation of the gate's frame. Geometry
+    spans TR_BASE..TR_BASE + total height in node space (see the constants
+    comment for the base offset)."""
+    uv = PLASTER_UV
+    verts, norms, uvs, idx = [], [], [], []
+    for band in range(TR_COUNT):
+        base = len(verts)
+        yc = TR_BASE + band * TR_PITCH + TR_MINOR_R
+        for i in range(TR_MAJOR_SEG):
+            a = math.tau * i / TR_MAJOR_SEG
+            ca, sa = math.cos(a), math.sin(a)
+            for j in range(TR_MINOR_SEG):
+                v = math.tau * j / TR_MINOR_SEG
+                cv, sv = math.cos(v), math.sin(v)
+                rho = TR_MAJOR_R + TR_MINOR_R * cv
+                verts.append((rho * ca, yc + TR_MINOR_R * sv, -rho * sa))
+                norms.append((ca * cv, sv, -sa * cv))
+                uvs.append(uv)
+        for i in range(TR_MAJOR_SEG):
+            i2 = (i + 1) % TR_MAJOR_SEG
+            for j in range(TR_MINOR_SEG):
+                j2 = (j + 1) % TR_MINOR_SEG
+                idx.extend([base + i * TR_MINOR_SEG + j,
+                            base + i2 * TR_MINOR_SEG + j,
+                            base + i2 * TR_MINOR_SEG + j2,
+                            base + i * TR_MINOR_SEG + j,
+                            base + i2 * TR_MINOR_SEG + j2,
+                            base + i * TR_MINOR_SEG + j2])
+    return verts, norms, uvs, [(idx, f"{HORIZON_MATERIAL}.{variant['faction']}")]
 
 
 def _vec3(v: tuple[float, float, float]) -> bytes:
@@ -682,8 +965,10 @@ def validate(blob: bytes, name: str) -> None:
 
 def main() -> None:
     for faction, variant in VARIANTS.items():
-        name = f"Teleporter.{faction}"
         variant.setdefault("faction", faction)
+        # station gate model; the Orb moved to the ring platform, whose
+        # traveller is the only clone source
+        name = f"Teleporter.{faction}"
         root = build_node(name, [
             lambda: torus(variant),
             lambda: plinth(variant),
@@ -700,6 +985,23 @@ def main() -> None:
         out = MOD_ROOT / f"{name}.timbermesh"
         out.write_bytes(blob)
         print(f"wrote {out}")
+        # ring platform model: flush plate, route-ring inscription, orb
+        pname = f"RingPlatform.{faction}"
+        plate = build_node(pname, [lambda: platform_base(variant)])
+        rings_node = build_node("RouteRing", [lambda: route_rings(variant)],
+                                parent=0, position=(0.5, PLATFORM_H, 0.5))
+        sweep_node = build_node("TransportRings",
+                                [lambda: transport_rings(variant)],
+                                parent=0, position=(0.5, PLATFORM_H, 0.5))
+        orb_node = build_node("Orb", [lambda: orb(variant)],
+                              parent=0,
+                              position=(0.5, PLATFORM_H + 0.3, 0.5))
+        pblob = zlib.compress(make_model(pname, [plate, rings_node, sweep_node,
+                                                 orb_node]), 6)
+        validate(pblob, pname)
+        pout = MOD_ROOT / f"{pname}.timbermesh"
+        pout.write_bytes(pblob)
+        print(f"wrote {pout}")
 
 
 if __name__ == "__main__":

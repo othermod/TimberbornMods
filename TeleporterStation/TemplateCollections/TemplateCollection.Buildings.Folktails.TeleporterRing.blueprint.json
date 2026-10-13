@@ -1,0 +1,9 @@
+{
+  "TemplateCollectionSpec": {
+    "CollectionId": "Buildings.Folktails",
+    "Blueprints": [
+      "Buildings/Paths/Ring/TeleporterRing.Folktails.blueprint",
+      "Buildings/Paths/Ring/TeleporterRingRemote.Folktails.blueprint"
+    ]
+  }
+}

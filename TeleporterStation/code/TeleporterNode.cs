@@ -22,8 +22,7 @@ public class TeleporterNode : BaseComponent, IAwakableComponent, IFinishedStateL
     private const string HorizonNodeName = "Horizon";
     private const string ArmsNodeName = "Arms";
     private const string HorizonAnimation = "Spin";
-    // The single source for the charge good's id: the initializer, billing,
-    // and the panel's extract row all reference this constant.
+    // the single source for the extract good's id: DESIGN.md#charges-and-the-charge-store
     internal const string ExtractGoodId = "Extract";
 
     // whole crossings per extract: DESIGN.md#charges-and-the-charge-store
@@ -49,8 +48,8 @@ public class TeleporterNode : BaseComponent, IAwakableComponent, IFinishedStateL
     // designated refill source: DESIGN.md#wormhole-siphon
     private bool _extractSource;
 
-    // baked near-white texel divided out so tints land pure: DESIGN.md#horizon-visuals
-    private static readonly Vector3 HorizonTexel = new(0.757f, 0.706f, 0.663f);
+    // near-white texel divided out so tints land pure; shared with the orb tint: DESIGN.md#horizon-visuals
+    internal static readonly Vector3 HorizonTexel = new(0.757f, 0.706f, 0.663f);
     private const float VoidBrightness = 0.22f;
     private static readonly int ColorProperty = Shader.PropertyToID("_Color");
 
@@ -68,8 +67,7 @@ public class TeleporterNode : BaseComponent, IAwakableComponent, IFinishedStateL
 
     public bool IsCharged => IsFinished && _charged;
 
-    // live read of the one blocker set vanilla consumers themselves
-    // read: DESIGN.md#pause
+    // live read of the one blocker vanilla consumers themselves read: DESIGN.md#pause
     internal bool IsPaused => !_blockableObject.IsUnblocked;
 
     public int Charges => _chargeStore != null ? _chargeStore.AmountInStock(ExtractGoodId) : 0;
@@ -168,8 +166,7 @@ public class TeleporterNode : BaseComponent, IAwakableComponent, IFinishedStateL
         _network.ScanAutoRefills();
     }
 
-    // any BlockableObject blocker: the player pause button, or automation:
-    // DESIGN.md#pause
+    // any BlockableObject blocker, player pause or automation: DESIGN.md#pause
     private void OnBlockableChanged(object sender, EventArgs e)
     {
         _network.SetStationPaused(Coordinates, IsPaused);
@@ -318,7 +315,7 @@ public class TeleporterNode : BaseComponent, IAwakableComponent, IFinishedStateL
     }
 
     // deterministic per-district hue: DESIGN.md#horizon-visuals
-    private static Color DistrictColor(int centerNodeId)
+    internal static Color DistrictColor(int centerNodeId)
     {
         var h = (uint)centerNodeId;
         h ^= h >> 16;

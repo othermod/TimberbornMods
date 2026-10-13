@@ -1,0 +1,9 @@
+{
+  "TemplateCollectionSpec": {
+    "CollectionId": "Buildings.IronTeeth",
+    "Blueprints": [
+      "Buildings/Paths/Ring/TeleporterRing.IronTeeth.blueprint",
+      "Buildings/Paths/Ring/TeleporterRingRemote.IronTeeth.blueprint"
+    ]
+  }
+}

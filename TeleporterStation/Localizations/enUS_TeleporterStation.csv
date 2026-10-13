@@ -1,5 +1,5 @@
 ID,Text,Comment
-Building.Teleporter.DisplayName,Teleporter Station,
+Building.Teleporter.DisplayName,Wormhole Station,
 Building.Teleporter.Description,Allows instant travel between any two points on the map.,
 Building.Teleporter.FlavorDescription,"Mind the puddle. It's deeper than it looks.",
 Teleporter.Transits,Transits,
@@ -15,3 +15,26 @@ Teleporter.Status.Conflict,"Teleporters stand on the paths of more than one dist
 Teleporter.Status.Conflict.Short,Teleporters on several districts,Ticker text for the conflict status (vanilla shorts carry no period)
 Teleporter.Status.NetworkOffline,"No path-connected teleporter is charged. Refill one to restore the network.",Status icon text for a charged station beyond the paths while the network is dark
 Teleporter.Status.NetworkOffline.Short,Teleporter network offline,Ticker text for the dark-network status (vanilla shorts carry no period)
+Building.TeleporterRing.DisplayName,Ring Station,
+Building.TeleporterRing.Description,A short-range teleporter that allows direct travel between two points.,
+Building.TeleporterRing.FlavorDescription,"Where does it go? Wherever its other half is standing.",
+Ring.Requirements,"Once built, its pair can be placed anywhere within range.",Build-menu requirement bullet
+Ring.Panel.PlaceRemote,Place remote ring,Panel button: starts placing this ring's remote
+Ring.Panel.Unpaired,No remote yet. Place this ring's remote to open the route.,Panel hint shown while the ring has no remote
+Ring.Status.OutOfExtract,"Out of extract. Deliver extract to a ring on your district paths.",Status icon text for a paired dry ring
+Ring.Status.OutOfExtract.Short,Ring out of extract,Short alert text for the notification ticker (vanilla shorts carry no period)
+Ring.Status.Unpaired.Master.Build,"Build this ring. Fuel it, then place its remote.",Status icon text for a ring under construction
+Ring.Status.Unpaired.Master.Fuel,Deliver extract to this ring. Its remote can be placed once it holds fuel.,Status icon text for a built ring that holds no extract
+Ring.Status.Unpaired.Master,This ring stands alone. Place its remote to open the route.,Status icon text for a fueled ring with no remote
+Ring.Status.Unpaired.Master.Short,Ring has no remote,Shared ticker short for all unpaired-master stages (vanilla shorts carry no period)
+Ring.Status.Unpaired.Remote,This ring stands alone. Build a Ring Station within range.,Status icon text for a remote ring with no built partner
+Ring.Status.Unpaired.Remote.Short,Remote has no partner,Short alert text for the notification ticker (vanilla shorts carry no period)
+Building.TeleporterRingRemote.DisplayName,Remote Ring Station,
+Building.TeleporterRingRemote.Description,The far end of a ring route. Goes where the paths do not.,
+Building.TeleporterRingRemote.FlavorDescription,One ring to move them all.,
+Ring.Placement.OutOfRange,Ring platforms must be placed within range of each other.,Placement refusal shown by the tool alert
+Ring.Placement.NeedBuilt,Remote rings are placed as partners of a built ring.,Placement refusal for a remote without its built anchor
+Ring.Placement.NeedReady,"The built ring must be finished and fueled before its remote is placed.",Placement refusal while the built anchor is unfinished or dry
+Ring.Panel.NeedFuel,Deliver extract to this ring to place its remote.,Panel hint on a partnerless ring that is not yet fueled
+Ring.Panel.Unpaired.Remote,No partner yet. Build a Ring Station within range to reopen the route.,Panel hint shown while a remote ring has no built partner
+Ring.Panel.LinkBuilt,Link a built ring,Panel button on a partnerless remote: arms pairing for the next built ring

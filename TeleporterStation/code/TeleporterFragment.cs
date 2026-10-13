@@ -151,8 +151,7 @@ public class TeleporterFragment : IEntityPanelFragment
         }
         _root.ToggleDisplayStyle(visible: true);
         SetHint(_loc.T("Teleporter.NetworkCount", networkCount));
-        // the extract-source toggle is the only action a station has, and
-        // only a path-connected member can serve: DESIGN.md#wormhole-siphon
+        // the extract-source toggle is the only station action: DESIGN.md#wormhole-siphon
         if (canServe)
         {
             _buttons.Add(StyledButton(

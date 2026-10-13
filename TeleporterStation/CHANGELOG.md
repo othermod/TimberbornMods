@@ -4,6 +4,32 @@ Player-visible changes per version, written for the Workshop. Internal
 work (docs, tooling, process) stays out. Costs are quoted from the
 blueprints and verified at each release.
 
+## 0.4.0
+
+Ring Station pairs: teleport platforms that need no path between them.
+
+### New
+
+- Ring Station, the mod's second teleport building. Built as a pair on
+  your paths. One extract covers ten crossings, shared between the two
+  halves from the built ring's store.
+- The remote half is free and needs no paths. Place it from the built
+  ring's panel, anywhere within 30 tiles, even across a gap or a river,
+  or at different elevation.
+- Ring crossings run at tubeway speed. The plate reads as a path tile,
+  and its route inscription lights while the pair can carry someone.
+- Pause a ring pair from the built ring's panel, or with levers, timers,
+  and sensors. The remote follows its partner.
+
+### Changed
+
+- Wormhole crossings are now a fixed short flight with the beaver
+  hidden, instead of an instant jump. Same for rings.
+- The teleporter is now named Wormhole Station, and the pair halves are
+  the Ring Station and the Remote Ring Station.
+- The two teleport buildings now sit together in the build menu, ahead
+  of the tubeways.
+
 ## 0.3.0
 
 Teleporters can be paused.
