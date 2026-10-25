@@ -17,18 +17,21 @@ namespace TeleporterStation;
 
 // design: DESIGN.md#lifecycle-and-persistence
 public class TeleporterNode : BaseComponent, IAwakableComponent, IFinishedStateListener,
-    IFinishedPausable, IPersistentEntity
+    IFinishedPausable, IPersistentEntity, IPreviewServiceMember
 {
     private const string HorizonNodeName = "Horizon";
     private const string ArmsNodeName = "Arms";
     private const string HorizonAnimation = "Spin";
+    // hidden helper node, a leftover of the retired ride visual: DESIGN.md#horizon-visuals
+    private const string OrbNodeName = "Orb";
     // the single source for the extract good's id: DESIGN.md#charges-and-the-charge-store
     internal const string ExtractGoodId = "Extract";
 
     // whole crossings per extract: DESIGN.md#charges-and-the-charge-store
-    internal const int CrossingsPerCharge = 10;
+    internal const int CrossingsPerCharge = 40;
 
-    private static readonly ComponentKey NodeKey = new ComponentKey("TeleporterNode");
+    // the save-compat patcher reads this key as the marker of a wormhole entity: DESIGN.md#save-compatibility
+    internal static readonly ComponentKey NodeKey = new ComponentKey("TeleporterNode");
     private static readonly PropertyKey<int> CrossingsCountKey = new PropertyKey<int>("CrossingsSinceCharge");
     private static readonly PropertyKey<bool> ExtractSourceKey = new PropertyKey<bool>("ExtractSource");
 
@@ -39,6 +42,7 @@ public class TeleporterNode : BaseComponent, IAwakableComponent, IFinishedStateL
     private int _crossingsSinceCharge;
     private GameObject _horizon;
     private GameObject _arms;
+    private GameObject _orb;
     private TimbermeshAnimator _animator;
     private Material _voidMaterial;
     private Material _armMaterial;
@@ -87,6 +91,28 @@ public class TeleporterNode : BaseComponent, IAwakableComponent, IFinishedStateL
         // resolve by component name: DESIGN.md#charges-and-the-charge-store
         _chargeStore = GetComponentsAllocating<Inventory>()
             .FirstOrDefault(s => s.ComponentName == TeleporterChargeStoreInitializer.StoreComponentName);
+        // the model ships with every node active: DESIGN.md#horizon-visuals
+        HideCloneSources();
+    }
+
+    private void HideCloneSources()
+    {
+        _orb = HiddenCloneSource(OrbNodeName, _orb);
+    }
+
+    // the game dispatches these every placement pass, before any preview Show: DESIGN.md#ring-pairs
+    public void AddToPreviewService() => ZiplinePreviewVeil.Silence(_blockObject);
+
+    public void RemoveFromPreviewService() => ZiplinePreviewVeil.Silence(_blockObject);
+
+    private GameObject HiddenCloneSource(string name, GameObject current)
+    {
+        var node = current != null ? current : FindModelChild(name);
+        if (node != null)
+        {
+            node.SetActive(false);
+        }
+        return node;
     }
 
     public void OnEnterFinishedState()
@@ -125,6 +151,7 @@ public class TeleporterNode : BaseComponent, IAwakableComponent, IFinishedStateL
         _network.Unregister(Coordinates);
         _horizon = null;
         _arms = null;
+        _orb = null;
         _animator = null;
         _visualsResolved = false;
     }
@@ -255,6 +282,7 @@ public class TeleporterNode : BaseComponent, IAwakableComponent, IFinishedStateL
         {
             _horizon = FindModelChild(HorizonNodeName);
             _arms = FindModelChild(ArmsNodeName);
+            HideCloneSources();
             _animator = GetComponentInChildren<TimbermeshAnimator>(true);
             if (_horizon != null && _arms != null && _animator != null && _animator.HasAnimation(HorizonAnimation))
             {

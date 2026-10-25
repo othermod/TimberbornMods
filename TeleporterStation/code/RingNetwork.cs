@@ -1,9 +1,13 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
+using Timberborn.BlockSystem;
+using Timberborn.Common;
 using Timberborn.Coordinates;
 using Timberborn.EntitySystem;
 using Timberborn.Navigation;
 using Timberborn.SingletonSystem;
+using Timberborn.ZiplineSystem;
 using UnityEngine;
 
 namespace TeleporterStation;
@@ -14,19 +18,15 @@ public class RingNetwork : TeleporterLinkIndex, ILoadableSingleton, IPostLoadabl
     // the group literal ResolveGroup stores into the base's GroupName
     private const string GroupLiteral = "TeleporterRing";
 
-    // tubeway-rate travel: the crossing costs distance x this: DESIGN.md#ring-transit
-    internal const float TubewayUnitCost = 0.25f;
-
-    internal const float TravellerScale = 0.4f;
-
-    // the hide fires near an anchor, whose height shifts the grid cell a layer: DESIGN.md#ring-transit
-    private const float TimedLinkRadius = 3f;
-
     private readonly TeleporterNetwork _network;
     private readonly EntityService _entityService;
+    private readonly ZiplineConnectionService _ziplineConnections;
 
     private readonly Dictionary<Vector3Int, RingNode> _rings = new();
     private readonly Dictionary<Vector3Int, (bool Paired, bool Live, bool Charged, bool Paused)> _signatures = new();
+
+    // the instant span costs the same as a station flight: DESIGN.md#travel-every-crossing-is-an-instant-jump
+    internal override float EdgeCost => 0.01f;
 
     // with the network's settled claims this closes the load window: DESIGN.md#load-window
     private bool _postLoaded;
@@ -35,26 +35,19 @@ public class RingNetwork : TeleporterLinkIndex, ILoadableSingleton, IPostLoadabl
     internal event Action<Vector3Int> RingStateChanged;
 
     public RingNetwork(TeleporterNetwork network, EntityService entityService,
-        INavMeshService navMeshService,
-        NavMeshGroupService navMeshGroupService, NodeIdService nodeIdService,
-        TerrainNavMeshSource terrainNavMeshSource,
-        InstantTerrainNavMeshSource instantTerrainNavMeshSource,
-        PreviewTerrainNavMeshSource previewTerrainNavMeshSource,
-        RoadNavMeshSource roadNavMeshSource, InstantRoadNavMeshSource instantRoadNavMeshSource,
-        PreviewRoadNavMeshSource previewRoadNavMeshSource)
-        : base(navMeshService, navMeshGroupService, nodeIdService, terrainNavMeshSource,
-              instantTerrainNavMeshSource, previewTerrainNavMeshSource, roadNavMeshSource,
-              instantRoadNavMeshSource, previewRoadNavMeshSource)
+        ZiplineConnectionService ziplineConnections, INavMeshService navMeshService,
+        NavMeshGroupService navMeshGroupService, IBlockService blockService,
+        BresenhamLineDrawer bresenhamLines)
+        : base(navMeshService, navMeshGroupService, blockService, bresenhamLines)
     {
         _network = network;
         _entityService = entityService;
+        _ziplineConnections = ziplineConnections;
     }
 
     public void Load()
     {
         ResolveGroup(GroupLiteral);
-        // the claim map stays real-paths-only: DESIGN.md#path-reachability
-        _network.SkipNavGroupInClaimMap(GroupId);
         _network.ClaimMapRefreshed += OnClaimMapRefreshed;
         Debug.Log($"[TeleporterStation] ring nav mesh group '{GroupName}' = {GroupId}");
     }
@@ -64,6 +57,10 @@ public class RingNetwork : TeleporterLinkIndex, ILoadableSingleton, IPostLoadabl
     {
         _postLoaded = true;
         RefreshLinks();
+        // the game reconnected pairs at load with fresh specs and left occupancy blocks on them: DESIGN.md#ring-pairs
+        SweepConnectionBlocks(
+            _rings.Values.Select(ring => ring.GetComponent<ZiplineTower>()).Where(t => t != null),
+            other => RingCoordsOf(other, out _));
         if (_network.ClaimsSettled)
         {
             LoadComplete = true;
@@ -154,95 +151,14 @@ public class RingNetwork : TeleporterLinkIndex, ILoadableSingleton, IPostLoadabl
         return _rings.GetValueOrDefault(coordinates);
     }
 
-    // tubeway-rate travel: the crossing costs distance x this (walk-seconds): DESIGN.md#ring-transit
-    internal override float EdgeCost(Vector3Int start, Vector3Int end)
-    {
-        var dx = end.x - start.x;
-        var dy = end.y - start.y;
-        return Mathf.Sqrt(dx * dx + dy * dy) * TubewayUnitCost;
-    }
-
-    // every flight corner carries the constant tubeway rate: DESIGN.md#ring-transit
-    internal override float TransitSpeed(Vector3Int entry, Vector3Int exit)
-    {
-        return 1f / TubewayUnitCost;
-    }
-
-    // DIRECTIONAL: the ring near the position boards, its partner is the exit: DESIGN.md#ring-transit
-    internal override bool TryGetTimedLink(Vector3 world, out Vector3Int entry, out Vector3Int exit)
-    {
-        var ring = RingNear(world, TimedLinkRadius);
-        var partner = ring?.Partner;
-        if (ring == null || partner == null)
-        {
-            entry = default;
-            exit = default;
-            return false;
-        }
-        entry = ring.Coordinates;
-        exit = partner.Coordinates;
-        return true;
-    }
-
-    // the plate's top center, the anchor the flight line and chain follow: DESIGN.md#ring-transit
+    // the plate's top center, the anchor the span flies from: DESIGN.md#travel-every-crossing-is-an-instant-jump
     internal override Vector3 AnchorWorld(Vector3Int coordinates)
     {
         return RingAt(coordinates)?.AnchorWorld()
                ?? CoordinateSystem.GridToWorldCentered(coordinates);
     }
 
-    private RingNode RingNear(Vector3 world, float maxDistance)
-    {
-        RingNode best = null;
-        var bestDistance = maxDistance;
-        foreach (var ring in _rings.Values)
-        {
-            var distance = Vector3.Distance(world, ring.AnchorWorld());
-            if (distance < bestDistance)
-            {
-                bestDistance = distance;
-                best = ring;
-            }
-        }
-        return best;
-    }
-
-    // the flying traveller is a mini clone of the entry ring's horizon: DESIGN.md#ring-transit
-    internal GameObject SpawnTraveller(Vector3 position)
-    {
-        var ring = RingNear(position, TimedLinkRadius);
-        var source = ring?.OrbNode;
-        if (source == null)
-        {
-            return null;
-        }
-        var clone = UnityEngine.Object.Instantiate(source);
-        clone.SetActive(true);
-        clone.transform.position = position;
-        clone.transform.localScale = Vector3.one * TravellerScale;
-        return clone;
-    }
-
-    internal GameObject SpawnSweep(Vector3 position)
-    {
-        var ring = RingNear(position, TimedLinkRadius);
-        var source = ring?.SweepNode;
-        if (source == null)
-        {
-            return null;
-        }
-        var clone = UnityEngine.Object.Instantiate(source);
-        clone.SetActive(true);
-        // the rings stay centered on the plate: DESIGN.md#ring-transit
-        clone.transform.position = ring.AnchorWorld();
-        return clone;
-    }
-
-    // the visual captures the entry ring to find the remote's plate: DESIGN.md#ring-transit
-    internal RingNode NearestRing(Vector3 position) =>
-        RingNear(position, TimedLinkRadius);
-
-    // the route flies in the network district's hue: DESIGN.md#ring-transit
+    // the burst flies in the network district's hue: DESIGN.md#travel-every-crossing-is-an-instant-jump
     internal Color TravellerColor =>
         TeleporterNode.DistrictColor(_network.NetworkDistrict()?.District.CenterNodeId ?? -1);
 
@@ -251,9 +167,38 @@ public class RingNetwork : TeleporterLinkIndex, ILoadableSingleton, IPostLoadabl
         return HasAnyLink(coordinates);
     }
 
+    // the bill is the crossing's exact instant; both plates burst together in the same call: DESIGN.md#travel-every-crossing-is-an-instant-jump
     internal override void BillCrossing(Vector3Int entry)
     {
-        _rings.GetValueOrDefault(entry)?.RecordCrossing();
+        var ring = _rings.GetValueOrDefault(entry);
+        if (ring == null)
+        {
+            return;
+        }
+        ring.RecordCrossing();
+        ring.PlayCrossingBurst();
+        ring.Partner?.PlayCrossingBurst();
+    }
+
+    // activations identify rings by their tower; the scan runs only on those rare events: DESIGN.md#ring-pairs
+    internal bool RingCoordsOf(ZiplineTower tower, out Vector3Int coordinates)
+    {
+        foreach (var (cell, ring) in _rings)
+        {
+            if (ring.GetComponent<ZiplineTower>() == tower)
+            {
+                coordinates = cell;
+                return true;
+            }
+        }
+        coordinates = default;
+        return false;
+    }
+
+    // ownership checks route through the same scan: DESIGN.md#ring-pairs
+    internal override bool CoordsOf(ZiplineTower tower, out Vector3Int coordinates)
+    {
+        return RingCoordsOf(tower, out coordinates);
     }
 
     private bool CanCarve(RingNode ring)
@@ -261,7 +206,39 @@ public class RingNetwork : TeleporterLinkIndex, ILoadableSingleton, IPostLoadabl
         return ring.IsFinished && !ring.IsPaused && ring.IsCharged;
     }
 
+    // the ring pair is two instant spans, the station's recipe; leftover cables churn out with the pair, never at load: DESIGN.md#travel-every-crossing-is-an-instant-jump
+    internal override bool WritePair(Vector3Int start, Vector3Int end, bool add)
+    {
+        var towerA = _rings.GetValueOrDefault(start)?.GetComponent<ZiplineTower>();
+        var towerB = _rings.GetValueOrDefault(end)?.GetComponent<ZiplineTower>();
+        if (towerA == null || towerB == null)
+        {
+            return false;
+        }
+        var a = towerA.CableAnchorPointInt;
+        var b = towerB.CableAnchorPointInt;
+        if (add)
+        {
+            _navMeshService.AddEdge(NavMeshEdge.CreateGrouped(a, b, GroupId, isRoad: true, EdgeCost));
+            _navMeshService.AddEdge(NavMeshEdge.CreateGrouped(b, a, GroupId, isRoad: true, EdgeCost));
+            return true;
+        }
+        _navMeshService.RemoveEdge(NavMeshEdge.CreateGrouped(a, b, GroupId, isRoad: true, EdgeCost));
+        _navMeshService.RemoveEdge(NavMeshEdge.CreateGrouped(b, a, GroupId, isRoad: true, EdgeCost));
+        if (towerA.IsConnectedTo(towerB))
+        {
+            _ziplineConnections.Disconnect(towerA, towerB);
+            Debug.Log($"[TeleporterStation] ring zipline {start} -> {end} disconnected");
+        }
+        return true;
+    }
+
     private void RefreshLinks()
+    {
+        RefreshLinksCore();
+    }
+
+    private void RefreshLinksCore()
     {
         var desired = new HashSet<(Vector3Int, Vector3Int)>();
         foreach (var (coordinates, ring) in _rings)

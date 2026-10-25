@@ -8,7 +8,7 @@ namespace TeleporterStation;
 // design: DESIGN.md#charges-and-the-charge-store
 public class TeleporterChargeStoreInitializer : IDedicatedDecoratorInitializer<TeleporterSpec, Inventory>
 {
-    internal const int ChargeCapacity = 100;
+    internal const int ChargeCapacity = 25;
 
     // persistence key; TeleporterNode resolves the store by this name
     internal const string StoreComponentName = "TeleporterCharges";

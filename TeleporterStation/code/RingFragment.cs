@@ -7,6 +7,7 @@ using Timberborn.Goods;
 using Timberborn.InventorySystem;
 using Timberborn.InventorySystemUI;
 using Timberborn.Localization;
+using Timberborn.ZiplineSystemUI;
 using UnityEngine;
 using UnityEngine.UIElements;
 
@@ -37,15 +38,19 @@ public class RingFragment : IEntityPanelFragment
     private RingNode _node;
     private string _signature;
     private string _lastSeenSignature;
+    private readonly ZiplineTowerFragment _ziplineTowerFragment;
+    private bool _pendingZiplineClear;
 
     public RingFragment(RingPairingFlow flow, ILoc loc, InformationalRowsFactory rowsFactory,
-        VisualElementLoader visualElementLoader, IAssetLoader assetLoader)
+        VisualElementLoader visualElementLoader, IAssetLoader assetLoader,
+        ZiplineTowerFragment ziplineTowerFragment)
     {
         _flow = flow;
         _loc = loc;
         _rowsFactory = rowsFactory;
         _visualElementLoader = visualElementLoader;
         _assetLoader = assetLoader;
+        _ziplineTowerFragment = ziplineTowerFragment;
     }
 
     public VisualElement InitializeFragment()
@@ -80,6 +85,7 @@ public class RingFragment : IEntityPanelFragment
     public void ShowFragment(BaseComponent entity)
     {
         _node = entity.GetComponent<RingNode>();
+        _pendingZiplineClear = _node != null;
         _lastSeenSignature = null;
         _root.ToggleDisplayStyle(_node != null && _node.IsFinished);
         _signature = null;
@@ -103,6 +109,12 @@ public class RingFragment : IEntityPanelFragment
 
     public void UpdateFragment()
     {
+        // the vanilla Connections panel never serves rings: DESIGN.md#entity-panel
+        if (_pendingZiplineClear)
+        {
+            _pendingZiplineClear = false;
+            _ziplineTowerFragment.ClearFragment();
+        }
         if (_node == null)
         {
             return;

@@ -16,6 +16,10 @@
     "ConstructionModeModel": "Finished",
     "UndergroundModelDepth": 0
   },
+  "DynamicPathModelSpec": {
+    "GroundModelPrefix": "DirtPath",
+    "RoofModelPrefix": ""
+  },
   "TemplateSpec": {
     "TemplateName": "Tunnel.TeleporterRingRemote.Folktails",
     "BackwardCompatibleTemplateNames": [
@@ -24,10 +28,6 @@
     ],
     "RequiredFeatureToggle": "",
     "DisablingFeatureToggle": ""
-  },
-  "DynamicPathModelSpec": {
-    "GroundModelPrefix": "DirtPath",
-    "RoofModelPrefix": ""
   },
   "BlockObjectNavMeshSettingsSpec": {
     "NoAutoWalls": false,
@@ -69,7 +69,7 @@
     "Blocks": [
       {
         "MatterBelow": "GroundOrStackable",
-        "Occupations": "Bottom, Top, Corners, Path, Middle",
+        "Occupations": "Bottom, Path, Middle",
         "Stackable": "None",
         "OccupyAllBelow": false,
         "Underground": false
@@ -319,5 +319,22 @@
       }
     }
   },
-  "RemoteRingSpec": {}
+  "RemoteRingSpec": {},
+  "ZiplineTowerSpec": {
+    "CableAnchorPoint": {
+      "X": 0.5,
+      "Y": 0.85,
+      "Z": 0.5
+    },
+    "MaxConnections": 2,
+    "MaxDistance": 200,
+    "UnobstructedCoordinates": [
+      {
+        "X": 0,
+        "Y": 0,
+        "Z": 0
+      }
+    ]
+  },
+  "ZiplineStationSpec": {}
 }

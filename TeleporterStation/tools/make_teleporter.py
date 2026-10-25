@@ -26,9 +26,10 @@ chevrons = the dark grunge band, ramps = the faction wood plank block,
 event horizon = a constant dark texel on the painted metal ("void" look; the water
 materials' shader only works through the game's own water rendering, not on meshes).
 The ring platform model (RingPlatform.*, the ring building's own model; the gate
-model stays with the station) reuses the same zones: plate top = the torus's
-hex-tread zone, rim = the painted-metal panel texel, route-ring inscription and
-orb = the flat plaster texel the horizon tints through.
+model stays with the station) reuses the same zones: plate top = the BaseMetal
+atlas's concentric-circle block, centered, rim = the painted-metal panel texel,
+route-ring inscription and orb = the flat plaster texel the horizon tints
+through.
 """
 
 import math
@@ -96,19 +97,22 @@ ROUTE_RING_RADII = (0.13, 0.19, 0.25, 0.31, 0.37)
 ROUTE_RING_WIDTH = 0.022
 ROUTE_RING_RISE = 0.004
 ROUTE_RING_CENTER_R = 0.07
-# Hex-tread UV planar mapping for the plate top: the torus tread zone with
-# fold seams every ~0.7 world units, so grout lines land on the folds.
-TREAD_UV_FREQ = 1.43
+# Plate-top UV rect: the BaseMetal atlas's concentric-circle block (the
+# square block above the honeycomb), interior measured at x 483-638,
+# y 163-316 in the 640-px atlas, same spot in both factions. Mapped once
+# over the plate's bounding square, so the circle sits centered.
+PLATE_UV = (0.7547, 0.5062, 0.9969, 0.7453)   # u0, v0, u1, v1
 # Transport rings (the sweep effect's clone source): five solid tori hugging
 # the plate edge, stacked with gaps like slices of a cylinder. Their crown
 # stays inside the plate's 0.47 rim and their bore clears the 0.37
-# inscription ring. The node hides
-# on the building; the transit visual clones it AT THE PLATE'S TOP CENTER
-# (the RouteRing node's position) and sweeps it up out of the plate
-# (dematerialize) or down into it (rematerialize), so the geometry starts at
-# the node origin.
+# inscription ring. The node hides on the building; the transit visual clones
+# it at the plate's top center (the RouteRing node's position), where the
+# node carries one child node per ring at its stacked slot height, so the
+# rings can emerge from the plate ring by ring and sink back into it
+# (DESIGN.md#rides). Each torus rests against its node origin (bore a minor
+# radius up).
 TR_MAJOR_R, TR_MINOR_R = 0.4125, 0.0375
-TR_PITCH, TR_COUNT, TR_BASE = 0.135, 5, 0.0
+TR_PITCH, TR_COUNT = 0.135, 5
 TR_MAJOR_SEG, TR_MINOR_SEG = 32, 12
 
 VARIANTS = {
@@ -591,15 +595,14 @@ def _circle_point(cx: float, cz: float, r: float, a: float,
 
 
 def platform_base(variant: dict):
-    """The circular plate the ring building becomes: hex-tread top
-    (the torus's tread zone, mapped planarly with fold seams so the grout
-    lines land on the folds), painted-metal rim wall, bottom sunk below
+    """The circular plate the ring building becomes: the atlas's
+    concentric-circle block mapped once, centered, over the top
+    (PLATE_UV), painted-metal rim wall, bottom sunk below
     terrain so no face is coplanar with it. The top clears the game's dirt
     tile (DirtPath children render under the plate: DESIGN.md#ring-pairs),
     so the plate reads as set into a path."""
     verts, norms, uvs, idx = [], [], [], []
     tread_material = variant["tread_material"]
-    rim_material = variant["ring_material"]
     rim_uv = (variant["rail_u"], 0.5)
     seg = PLATFORM_SEG
     y_top, y_bot = PLATFORM_H, -PLATFORM_SINK
@@ -609,10 +612,10 @@ def platform_base(variant: dict):
         return len(verts) - 1
 
     def tread_uv(x, z):
-        def fold(t):
-            m = (t * TREAD_UV_FREQ) % 2.0
-            return m if m <= 1.0 else 2.0 - m
-        return (0.762 + fold(x) * 0.235, 0.248 + fold(z) * 0.181)
+        u0, v0, u1, v1 = PLATE_UV
+        s = (x - 0.5 + PLATFORM_R) / (2 * PLATFORM_R)
+        t = (z - 0.5 + PLATFORM_R) / (2 * PLATFORM_R)
+        return (u0 + s * (u1 - u0), v0 + t * (v1 - v0))
 
     def tread_circle(r):
         return [add(_circle_point(0.5, 0.5, r, a, y_top),
@@ -647,6 +650,63 @@ def platform_base(variant: dict):
         k2 = (k + 1) % seg
         idx.extend([bcenter, bring[k2], bring[k]])
     return verts, norms, uvs, [(idx, tread_material)]
+
+
+def square_base(variant: dict):
+    """Square plinth under the circular plate: a full-tile frustum tapering
+    up to a smaller square the plate overhangs. Sits deeper than the plate's
+    sunk bottom (no coplanar face) and ends a visible step below the tread
+    top, so the plate reads as seated on it. Plinth material and wood rect
+    match the station's plinth: DESIGN.md#ring-pairs. Every face follows the
+    proven plate windings (tread fan up, bottom fan down, rim wall out), and
+    a signed-volume assert fails the build if any face ever inverts."""
+    u0, v0, u1, v1 = variant["wood_uv_rect"]
+    y0, y1 = -PLATFORM_SINK - 0.01, PLATFORM_H - 0.015
+    w0, w1 = 0.5, 0.34
+    h, run = y1 - y0, w0 - w1
+    slope = math.hypot(h, run)
+    angs = [math.tau * (k + 0.5) / 4 for k in range(4)]
+    ring0 = [(0.5 + w0 * math.cos(a), 0.5 - w0 * math.sin(a)) for a in angs]
+    ring1 = [(0.5 + w1 * math.cos(a), 0.5 - w1 * math.sin(a)) for a in angs]
+    verts, norms, uvs, idx = [], [], [], []
+
+    def add(p, n, uv):
+        verts.append(p); norms.append(n); uvs.append(uv)
+        return len(verts) - 1
+
+    def side_uv(t, y):
+        return (u0 + t * (u1 - u0), v0 + (y - y0) / h * (v1 - v0))
+
+    for k in range(4):
+        k2 = (k + 1) % 4
+        ox = (ring0[k][0] + ring0[k2][0]) - 1.0
+        oz = (ring0[k][1] + ring0[k2][1]) - 1.0
+        ol = math.hypot(ox, oz)
+        n = (ox / ol * h / slope, run / slope, oz / ol * h / slope)
+        v0_ = add((ring0[k][0], y0, ring0[k][1]), n, side_uv(0.0, y0))
+        v1_ = add((ring0[k2][0], y0, ring0[k2][1]), n, side_uv(1.0, y0))
+        v2_ = add((ring1[k2][0], y1, ring1[k2][1]), n, side_uv(1.0, y1))
+        v3_ = add((ring1[k][0], y1, ring1[k][1]), n, side_uv(0.0, y1))
+        idx.extend([v0_, v2_, v3_, v0_, v3_, v1_])
+    center = add((0.5, y1, 0.5), (0.0, 1.0, 0.0), (u0, v0))
+    top = [add((x, y1, z), (0.0, 1.0, 0.0),
+               (u0 + (x - 0.5 + w1) / (2 * w1) * (u1 - u0),
+                v0 + (z - 0.5 + w1) / (2 * w1) * (v1 - v0)))
+           for x, z in ring1]
+    for k in range(4):
+        idx.extend([center, top[k], top[(k + 1) % 4]])
+    bcenter = add((0.5, y0, 0.5), (0.0, -1.0, 0.0), (u0, v0))
+    bot = [add((x, y0, z), (0.0, -1.0, 0.0), (u0, v0)) for x, z in ring0]
+    for k in range(4):
+        idx.extend([bcenter, bot[(k + 1) % 4], bot[k]])
+    vol = 0.0
+    for t in range(0, len(idx), 3):
+        a, b, c = (verts[idx[t + j]] for j in range(3))
+        vol += (a[0] * (b[1] * c[2] - b[2] * c[1])
+                - a[1] * (b[0] * c[2] - b[2] * c[0])
+                + a[2] * (b[0] * c[1] - b[1] * c[0])) / 6.0
+    assert vol > 0.0, "square_base winding inverted"
+    return verts, norms, uvs, [(idx, variant["plinth_material"])]
 
 
 def _radial(a: float) -> tuple[float, float, float]:
@@ -704,38 +764,35 @@ def route_rings(variant: dict):
     return verts, norms, uvs, [(idx, f"{HORIZON_MATERIAL}.{variant['faction']}")]
 
 
-def transport_rings(variant: dict):
-    """The sweep effect's body: five solid tori hugging the plate edge,
-    stacked with gaps. The gate torus's outward winding carries over via
-    the same axis substitution _circle_point documents (x = cos a,
-    z = -sin a), which is a proper rotation of the gate's frame. Geometry
-    spans TR_BASE..TR_BASE + total height in node space (see the constants
-    comment for the base offset)."""
+def transport_ring(variant: dict):
+    """One torus of the sweep stack: the gate torus's outward winding
+    carries over via the same axis substitution _circle_point documents
+    (x = cos a, z = -sin a), which is a proper rotation of the gate's
+    frame. The torus rests against the node origin; the ring nodes sit at
+    their stacked slot heights (see the TR_ constants comment)."""
     uv = PLASTER_UV
     verts, norms, uvs, idx = [], [], [], []
-    for band in range(TR_COUNT):
-        base = len(verts)
-        yc = TR_BASE + band * TR_PITCH + TR_MINOR_R
-        for i in range(TR_MAJOR_SEG):
-            a = math.tau * i / TR_MAJOR_SEG
-            ca, sa = math.cos(a), math.sin(a)
-            for j in range(TR_MINOR_SEG):
-                v = math.tau * j / TR_MINOR_SEG
-                cv, sv = math.cos(v), math.sin(v)
-                rho = TR_MAJOR_R + TR_MINOR_R * cv
-                verts.append((rho * ca, yc + TR_MINOR_R * sv, -rho * sa))
-                norms.append((ca * cv, sv, -sa * cv))
-                uvs.append(uv)
-        for i in range(TR_MAJOR_SEG):
-            i2 = (i + 1) % TR_MAJOR_SEG
-            for j in range(TR_MINOR_SEG):
-                j2 = (j + 1) % TR_MINOR_SEG
-                idx.extend([base + i * TR_MINOR_SEG + j,
-                            base + i2 * TR_MINOR_SEG + j,
-                            base + i2 * TR_MINOR_SEG + j2,
-                            base + i * TR_MINOR_SEG + j,
-                            base + i2 * TR_MINOR_SEG + j2,
-                            base + i * TR_MINOR_SEG + j2])
+    yc = TR_MINOR_R
+    for i in range(TR_MAJOR_SEG):
+        a = math.tau * i / TR_MAJOR_SEG
+        ca, sa = math.cos(a), math.sin(a)
+        for j in range(TR_MINOR_SEG):
+            v = math.tau * j / TR_MINOR_SEG
+            cv, sv = math.cos(v), math.sin(v)
+            rho = TR_MAJOR_R + TR_MINOR_R * cv
+            verts.append((rho * ca, yc + TR_MINOR_R * sv, -rho * sa))
+            norms.append((ca * cv, sv, -sa * cv))
+            uvs.append(uv)
+    for i in range(TR_MAJOR_SEG):
+        i2 = (i + 1) % TR_MAJOR_SEG
+        for j in range(TR_MINOR_SEG):
+            j2 = (j + 1) % TR_MINOR_SEG
+            idx.extend([i * TR_MINOR_SEG + j,
+                        i2 * TR_MINOR_SEG + j,
+                        i2 * TR_MINOR_SEG + j2,
+                        i * TR_MINOR_SEG + j,
+                        i2 * TR_MINOR_SEG + j2,
+                        i * TR_MINOR_SEG + j2])
     return verts, norms, uvs, [(idx, f"{HORIZON_MATERIAL}.{variant['faction']}")]
 
 
@@ -766,6 +823,16 @@ def spin_animation(position: tuple[float, float, float],
     return f_message(10, out)
 
 
+def idle_animation(position: tuple[float, float, float]) -> bytes:
+    """Node.NodeAnimations entry, "Idle": one frame holding the node's own
+    transform, so the model imports with an IAnimator; the zipline tower
+    decorators dereference one and the game NREs without it."""
+    frame = (f_message(1, _vec3(position))
+             + f_message(2, _quat((0.0, 0.0, 0.0, 1.0)))
+             + f_message(3, _vec3((1.0, 1.0, 1.0))))
+    return f_message(10, f_string(1, "Idle") + f_float(2, 1.0) + f_message(3, frame))
+
+
 def build_node(name: str, parts, parent: int = -1,
                position: tuple[float, float, float] = (0.0, 0.0, 0.0),
                extra: bytes = b"") -> bytes:
@@ -787,7 +854,7 @@ def build_node(name: str, parts, parent: int = -1,
         norms += p_norms
         uvs += p_uvs
         for indices, material in submeshes:
-            _assert_sound_triangles(indices, verts)
+            _assert_sound_triangles(indices, p_verts)
             by_material.setdefault(material, []).extend(base + i for i in indices)
     meshes = [f_message(8, packed_ints(1, idxs) + f_string(2, mat))
               for mat, idxs in by_material.items()]
@@ -966,8 +1033,9 @@ def validate(blob: bytes, name: str) -> None:
 def main() -> None:
     for faction, variant in VARIANTS.items():
         variant.setdefault("faction", faction)
-        # station gate model; the Orb moved to the ring platform, whose
-        # traveller is the only clone source
+        # station gate model; its Orb node is the station ride's clone
+        # source, hidden by TeleporterNode at Awake; the gate carries no
+        # sweep stack, the rings burst on the ring platform only
         name = f"Teleporter.{faction}"
         root = build_node(name, [
             lambda: torus(variant),
@@ -980,24 +1048,37 @@ def main() -> None:
         arms = build_node("Arms", [lambda: horizon_arms(variant)],
                           parent=0, position=horizon_pos,
                           extra=spin_animation(horizon_pos))
-        blob = zlib.compress(make_model(name, [root, rails_node, disc, arms]), 6)
+        orb_node = build_node("Orb", [lambda: orb(variant)],
+                              parent=0,
+                              position=(0.5, RAMP_H + 0.3, 0.5))
+        blob = zlib.compress(make_model(name, [root, rails_node, disc, arms,
+                                               orb_node]), 6)
         validate(blob, name)
         out = MOD_ROOT / f"{name}.timbermesh"
         out.write_bytes(blob)
         print(f"wrote {out}")
         # ring platform model: flush plate, route-ring inscription, orb
         pname = f"RingPlatform.{faction}"
-        plate = build_node(pname, [lambda: platform_base(variant)])
+        plate = build_node(pname, [lambda: square_base(variant),
+                                   lambda: platform_base(variant)])
         rings_node = build_node("RouteRing", [lambda: route_rings(variant)],
-                                parent=0, position=(0.5, PLATFORM_H, 0.5))
-        sweep_node = build_node("TransportRings",
-                                [lambda: transport_rings(variant)],
-                                parent=0, position=(0.5, PLATFORM_H, 0.5))
+                                parent=0, position=(0.5, PLATFORM_H, 0.5),
+                                extra=idle_animation((0.5, PLATFORM_H, 0.5)))
+        sweep_node = build_node("TransportRings", [], parent=0,
+                                position=(0.5, PLATFORM_H, 0.5))
         orb_node = build_node("Orb", [lambda: orb(variant)],
                               parent=0,
                               position=(0.5, PLATFORM_H + 0.3, 0.5))
-        pblob = zlib.compress(make_model(pname, [plate, rings_node, sweep_node,
-                                                 orb_node]), 6)
+        platform_nodes = [plate, rings_node, sweep_node, orb_node]
+        # one child per ring under the sweep carrier (index 2 above): the
+        # transit visual collapses the children onto the plate and re-extends
+        # them to these slots
+        platform_nodes += [build_node(f"Ring{band}",
+                                      [lambda: transport_ring(variant)],
+                                      parent=2,
+                                      position=(0.0, band * TR_PITCH, 0.0))
+                           for band in range(TR_COUNT)]
+        pblob = zlib.compress(make_model(pname, platform_nodes), 6)
         validate(pblob, pname)
         pout = MOD_ROOT / f"{pname}.timbermesh"
         pout.write_bytes(pblob)

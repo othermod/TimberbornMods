@@ -1,15 +1,16 @@
 using System.Collections;
 using System.Collections.Generic;
-using System.Linq;
 using Timberborn.BaseComponentSystem;
+using Timberborn.BlockObjectModelSystem;
 using Timberborn.BlockSystem;
-using Timberborn.BlockingSystem;
 using Timberborn.BuildingRange;
 using Timberborn.ConstructionMode;
+using Timberborn.Coordinates;
+using Timberborn.PathSystem;
+using Timberborn.BlockingSystem;
 using Timberborn.EntitySystem;
 using Timberborn.Goods;
 using Timberborn.InventorySystem;
-using Timberborn.PathSystem;
 using Timberborn.Persistence;
 using Timberborn.TemplateSystem;
 using Timberborn.WorldPersistence;
@@ -19,15 +20,27 @@ namespace TeleporterStation;
 
 // one end of an explicit pair: DESIGN.md#ring-pairs
 public class RingNode : BaseComponent, IAwakableComponent, IFinishedStateListener,
-    IPersistentEntity, IBuildingWithRange,
-    IPathConnectionEnforcer
+    IPersistentEntity, IBuildingWithRange, IPathConnectionEnforcer,
+    IUpdatableComponent, IDeletableEntity, IPreviewServiceMember
 {
     // the route indicator (the platform's pale ring inscription): DESIGN.md#ring-pairs
     private const string RouteRingNodeName = "RouteRing";
 
-    // clone source nodes, hidden on the building: DESIGN.md#ring-transit
+    // hidden helper nodes; the stack is the crossing burst's clone source: DESIGN.md#travel-every-crossing-is-an-instant-jump
     private const string OrbNodeName = "Orb";
     private const string SweepNodeName = "TransportRings";
+
+    // the burst's wall-clock span, the old sweep's ride-time duration: DESIGN.md#travel-every-crossing-is-an-instant-jump
+    private const float BurstSeconds = 1.1f;
+
+    // rise fills the first half of the span, retract the second: DESIGN.md#travel-every-crossing-is-an-instant-jump
+    private const float BurstRiseFraction = 0.5f;
+
+    // glow through the game's own highlight emission channel: DESIGN.md#travel-every-crossing-is-an-instant-jump
+    private const float BurstEmission = 2.5f;
+
+    private static readonly int ColorProperty = Shader.PropertyToID("_Color");
+    private static readonly int EmissionColorProperty = Shader.PropertyToID("_EmissionColor");
 
     // pair range in cells: docs/tuning.md
     internal const int MaxRange = 30;
@@ -35,7 +48,8 @@ public class RingNode : BaseComponent, IAwakableComponent, IFinishedStateListene
     // outline band thickness in cells: docs/tuning.md
     internal const int OutlineThickness = 2;
 
-    private static readonly ComponentKey NodeKey = new ComponentKey("RingNode");
+    // the save-compat patcher reads this key as the marker of a ring entity: DESIGN.md#save-compatibility
+    internal static readonly ComponentKey NodeKey = new ComponentKey("RingNode");
     private static readonly PropertyKey<int> CrossingsCountKey = new PropertyKey<int>("CrossingsSinceCharge");
     private static readonly PropertyKey<RingNode> PartnerKey = new PropertyKey<RingNode>("Partner");
 
@@ -44,6 +58,8 @@ public class RingNode : BaseComponent, IAwakableComponent, IFinishedStateListene
     private readonly ReferenceSerializer _referenceSerializer;
     private readonly ConstructionModeService _constructionModeService;
     private readonly RingPairingState _state;
+
+    // the tile variants the game's DynamicPathModel would drive, keyed like its table: DESIGN.md#ring-pairs
 
     private BlockObject _blockObject;
     private BlockableObject _blockableObject;
@@ -56,6 +72,11 @@ public class RingNode : BaseComponent, IAwakableComponent, IFinishedStateListene
     private GameObject _routeRing;
     private GameObject _orb;
     private GameObject _sweep;
+    private GameObject _burst;
+    private Material _burstMaterial;
+    private Transform[] _burstRings;
+    private float[] _burstSlots;
+    private float _burstSeconds;
     private Vector3? _anchorOffset;
 
     public RingNode(RingNetwork rings, IBlockService blockService,
@@ -111,7 +132,7 @@ public class RingNode : BaseComponent, IAwakableComponent, IFinishedStateListene
         // resolve by component name: DESIGN.md#charges-and-the-charge-store
         _chargeStore = GetComponentsAllocating<Inventory>()
             .FirstOrDefault(s => s.ComponentName == RingChargeStoreInitializer.StoreComponentName);
-        // the model ships with every node active: DESIGN.md#ring-transit
+        // the model ships with every node active: DESIGN.md#horizon-visuals
         HideCloneSources();
     }
 
@@ -120,6 +141,11 @@ public class RingNode : BaseComponent, IAwakableComponent, IFinishedStateListene
         _orb = HiddenCloneSource(OrbNodeName, _orb);
         _sweep = HiddenCloneSource(SweepNodeName, _sweep);
     }
+
+    // the game dispatches these every placement pass, before any preview Show: DESIGN.md#ring-pairs
+    public void AddToPreviewService() => ZiplinePreviewVeil.Silence(_blockObject);
+
+    public void RemoveFromPreviewService() => ZiplinePreviewVeil.Silence(_blockObject);
 
     private GameObject HiddenCloneSource(string name, GameObject current)
     {
@@ -164,6 +190,7 @@ public class RingNode : BaseComponent, IAwakableComponent, IFinishedStateListene
         _routeRing = null;
         _orb = null;
         _sweep = null;
+        DestroyBurst();
     }
 
     private bool HasStock()
@@ -192,6 +219,104 @@ public class RingNode : BaseComponent, IAwakableComponent, IFinishedStateListene
         }
         _chargeStore.TakeConsumed(new GoodAmount(TeleporterNode.ExtractGoodId, 1));
         return true;
+    }
+
+    // the burst runs on scaled time, so pause freezes it with the world: DESIGN.md#travel-every-crossing-is-an-instant-jump
+    public void Update()
+    {
+        if (_burst == null || Time.deltaTime <= 0f)
+        {
+            return;
+        }
+        _burstSeconds += Time.deltaTime;
+        var progress = _burstSeconds / BurstSeconds;
+        if (progress >= 1f)
+        {
+            DestroyBurst();
+            return;
+        }
+        var extension = progress < BurstRiseFraction
+            ? progress / BurstRiseFraction
+            : 1f - (progress - BurstRiseFraction) / (1f - BurstRiseFraction);
+        for (var i = 0; i < _burstRings.Length; i++)
+        {
+            _burstRings[i].localPosition = new Vector3(0f, _burstSlots[i] * extension, 0f);
+        }
+    }
+
+    // the stack bursts from the plate's top center: DESIGN.md#travel-every-crossing-is-an-instant-jump
+    internal void PlayCrossingBurst()
+    {
+        // a live burst must yield its slot; an overwritten clone freezes forever, its material destroyed by the next tint (the frozen magenta rings): DESIGN.md#travel-every-crossing-is-an-instant-jump
+        DestroyBurst();
+        if (_sweep == null)
+        {
+            return;
+        }
+        _burstSeconds = 0f;
+        _burst = UnityEngine.Object.Instantiate(_sweep);
+        _burst.SetActive(true);
+        _burst.transform.position = AnchorWorld();
+        var root = _burst.transform;
+        _burstRings = new Transform[root.childCount];
+        _burstSlots = new float[root.childCount];
+        for (var i = 0; i < root.childCount; i++)
+        {
+            var ring = root.GetChild(i);
+            _burstRings[i] = ring;
+            _burstSlots[i] = ring.localPosition.y;
+            ring.localPosition = Vector3.zero;
+        }
+        TintBurst();
+    }
+
+    // tint via _Color, glow through the highlight emission channel (one material per clone): DESIGN.md#travel-every-crossing-is-an-instant-jump
+    private void TintBurst()
+    {
+        var color = _rings.TravellerColor;
+        var renderers = _burst.GetComponentsInChildren<MeshRenderer>();
+        if (renderers.Length == 0)
+        {
+            return;
+        }
+        var tinted = new Color(
+            color.r / TeleporterNode.HorizonTexel.x,
+            color.g / TeleporterNode.HorizonTexel.y,
+            color.b / TeleporterNode.HorizonTexel.z, 1f);
+        _burstMaterial = new Material(renderers[0].sharedMaterial);
+        _burstMaterial.SetColor(ColorProperty, tinted);
+        _burstMaterial.SetColor(EmissionColorProperty, color * BurstEmission);
+        foreach (var renderer in renderers)
+        {
+            var materials = renderer.sharedMaterials;
+            for (var i = 0; i < materials.Length; i++)
+            {
+                materials[i] = _burstMaterial;
+            }
+            renderer.sharedMaterials = materials;
+        }
+    }
+
+    private void DestroyBurst()
+    {
+        if (_burst != null)
+        {
+            UnityEngine.Object.Destroy(_burst);
+            _burst = null;
+            _burstRings = null;
+            _burstSlots = null;
+        }
+        if (_burstMaterial != null)
+        {
+            UnityEngine.Object.Destroy(_burstMaterial);
+            _burstMaterial = null;
+        }
+    }
+
+    // teardown seam: DESIGN.md#lifecycle-and-persistence
+    public void DeleteEntity()
+    {
+        DestroyBurst();
     }
 
     private void OnStockChanged(object sender, InventoryStockChangedEventArgs e)
@@ -238,13 +363,8 @@ public class RingNode : BaseComponent, IAwakableComponent, IFinishedStateListene
         return dx * dx + dy * dy <= MaxRange * MaxRange;
     }
 
-    // the traveller visual clones these nodes: DESIGN.md#ring-transit
-    internal GameObject OrbNode => _orb;
-
-    internal GameObject SweepNode => _sweep;
-
     // plate-top center via the RouteRing node; bounds walk is the fallback: DESIGN.md#ring-pairs
-    internal Vector3 AnchorWorld()
+    public Vector3 AnchorWorld()
     {
         if (_routeRing != null)
         {

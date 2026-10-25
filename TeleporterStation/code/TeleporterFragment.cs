@@ -8,6 +8,7 @@ using Timberborn.Goods;
 using Timberborn.InventorySystem;
 using Timberborn.InventorySystemUI;
 using Timberborn.Localization;
+using Timberborn.ZiplineSystemUI;
 using UnityEngine;
 using UnityEngine.UIElements;
 
@@ -25,6 +26,8 @@ public class TeleporterFragment : IEntityPanelFragment
     private readonly InformationalRowsFactory _rowsFactory;
     private readonly VisualElementLoader _visualElementLoader;
     private readonly IAssetLoader _assetLoader;
+    private readonly ZiplineTowerFragment _ziplineTowerFragment;
+    private bool _pendingZiplineClear;
 
     private VisualElement _root;
     private VisualElement _mainSection;
@@ -43,13 +46,15 @@ public class TeleporterFragment : IEntityPanelFragment
                               ILoc loc,
                               InformationalRowsFactory rowsFactory,
                               VisualElementLoader visualElementLoader,
-                              IAssetLoader assetLoader)
+                              IAssetLoader assetLoader,
+                              ZiplineTowerFragment ziplineTowerFragment)
     {
         _network = network;
         _loc = loc;
         _rowsFactory = rowsFactory;
         _visualElementLoader = visualElementLoader;
         _assetLoader = assetLoader;
+        _ziplineTowerFragment = ziplineTowerFragment;
     }
 
     public VisualElement InitializeFragment()
@@ -84,6 +89,7 @@ public class TeleporterFragment : IEntityPanelFragment
     public void ShowFragment(BaseComponent entity)
     {
         _node = entity.GetComponent<TeleporterNode>();
+        _pendingZiplineClear = _node != null;
         _lastSeenSignature = null;
         _root.ToggleDisplayStyle(_node != null && _node.IsFinished);
         _signature = null;
@@ -107,6 +113,12 @@ public class TeleporterFragment : IEntityPanelFragment
 
     public void UpdateFragment()
     {
+        // the vanilla Connections panel never serves stations: DESIGN.md#entity-panel
+        if (_pendingZiplineClear)
+        {
+            _pendingZiplineClear = false;
+            _ziplineTowerFragment.ClearFragment();
+        }
         if (_node == null)
         {
             return;

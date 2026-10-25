@@ -4,16 +4,16 @@
     "LoopingSoundName": "",
     "BuildingCost": [
       {
-      "Id": "Plank",
-      "Amount": 20
+        "Id": "Plank",
+        "Amount": 20
       },
       {
-      "Id": "MetalBlock",
-      "Amount": 20
+        "Id": "MetalBlock",
+        "Amount": 20
       },
       {
-      "Id": "Extract",
-      "Amount": 50
+        "Id": "Extract",
+        "Amount": 50
       }
     ],
     "ScienceCost": 5000,
@@ -61,21 +61,60 @@
             "IsTwoWay": false
           }
         ]
+      },
+      {
+        "Cost": 0.0,
+        "Group": {
+          "UseGroup": true,
+          "GroupName": "TeleporterStep"
+        },
+        "IsPath": true,
+        "AddedEdges": [
+          {
+            "Start": {
+              "X": 0,
+              "Y": 0,
+              "Z": 0
+            },
+            "End": {
+              "X": 0,
+              "Y": 0,
+              "Z": 1
+            },
+            "IsTwoWay": true
+          }
+        ]
       }
     ],
-    "UnblockedCoordinates": [],
+    "UnblockedCoordinates": [
+      {
+        "Group": "TeleporterStep",
+        "Coordinates": {
+          "X": 0,
+          "Y": 0,
+          "Z": 1
+        }
+      }
+    ],
     "BlockedEdges": []
   },
   "BlockObjectSpec": {
     "Size": {
       "X": 1,
       "Y": 1,
-      "Z": 1
+      "Z": 2
     },
     "Blocks": [
       {
         "MatterBelow": "GroundOrStackable",
         "Occupations": "Bottom, Top, Corners, Path, Middle",
+        "Stackable": "None",
+        "OccupyAllBelow": false,
+        "Underground": false
+      },
+      {
+        "MatterBelow": "Any",
+        "Occupations": "All",
         "Stackable": "None",
         "OccupyAllBelow": false,
         "Underground": false
@@ -136,7 +175,13 @@
     ]
   },
   "BlockObjectAccessesSpec": {
-    "BlockingCoordinates": [],
+    "BlockingCoordinates": [
+      {
+        "X": 0,
+        "Y": 0,
+        "Z": 1
+      }
+    ],
     "AllowedCoordinates": [
       {
         "X": 0,
@@ -201,5 +246,22 @@
       }
     }
   },
-  "TeleporterSpec": {}
+  "TeleporterSpec": {},
+  "ZiplineTowerSpec": {
+    "CableAnchorPoint": {
+      "X": 0.5,
+      "Y": 1.85,
+      "Z": 0.5
+    },
+    "MaxConnections": 99,
+    "MaxDistance": 200,
+    "UnobstructedCoordinates": [
+      {
+        "X": 0,
+        "Y": 0,
+        "Z": 0
+      }
+    ]
+  },
+  "ZiplineStationSpec": {}
 }

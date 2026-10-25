@@ -4,6 +4,40 @@ Player-visible changes per version, written for the Workshop. Internal
 work (docs, tooling, process) stays out. Costs are quoted from the
 blueprints and verified at each release.
 
+## 0.5.0
+
+Every crossing is instant now, on both teleporters, and runs on the
+mod's own machinery.
+
+### New
+
+- Both plates of a ring pair pulse their transport rings at the same
+  moment when someone crosses, so each end marks the trip together.
+- A path platform can be built directly over a ring now.
+
+### Changed
+
+- Every crossing is instant. A beaver steps onto a plate and
+  rematerializes at its destination. In 0.4.0, every crossing was a
+  fixed short flight, with the traveler hidden on wormholes and a
+  glowing teardrop crossing at tubeway speed on rings.
+- The Ring Station occupies a single flat tile now, down from two.
+- The ring plate reads as a metal disc set into its dirt tile now,
+  instead of rendering as the dirt tile itself.
+- Extract goes four times further. One extract covers forty crossings
+  on both teleporters, up from ten, and a full store holds 25 extract
+  instead of 100.
+- The wormhole siphon moves one extract at a time, down from five, and
+  a source keeps 4 in reserve, down from 20.
+
+### Fixed
+
+- The 0.4.0 bug where a beaver or bot could get stuck mid-crossing or
+  wander off through the air.
+- Placing a teleporter beside a district center or another teleporter
+  no longer fails with a false warning about a second district.
+- Saves from 0.4.0 keep loading.
+
 ## 0.4.0
 
 Ring Station pairs: teleport platforms that need no path between them.

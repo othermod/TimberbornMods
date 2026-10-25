@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Timberborn.BlockSystem;
+using Timberborn.CharacterModelSystem;
 using Timberborn.Characters;
 using Timberborn.Coordinates;
 using Timberborn.EntitySystem;
@@ -9,6 +10,8 @@ using Timberborn.GameDistricts;
 using Timberborn.Navigation;
 using Timberborn.SelectionSystem;
 using Timberborn.SingletonSystem;
+using Timberborn.WalkingSystem;
+using Timberborn.ZiplineSystem;
 using UnityEngine;
 
 namespace TeleporterStation;
@@ -19,13 +22,16 @@ public class TeleporterNetwork : TeleporterLinkIndex, ILoadableSingleton, IPostL
 {
     private const string GroupLiteral = "Teleporter";
 
-    // crossings take constant TIME, not speed: the tick interval is fixed, so ticks-per-crossing is this constant regardless of game speed or span length: DESIGN.md#travel-timed-crossings
-    internal const float CrossingSeconds = 0.45f;
+    // below one walking step and at or under the cheap-neighbor bound so routing is unchanged: DESIGN.md#travel-every-crossing-is-an-instant-jump
+    internal override float EdgeCost => 0.01f;
 
     private readonly DistrictCenterRegistry _districtCenterRegistry;
     private readonly EntityRegistry _entityRegistry;
     private readonly EventBus _eventBus;
     private readonly InstantRoadNavMeshGraph _instantRoadNavMeshGraph;
+    private readonly NodeIdService _nodeIdService;
+    private readonly ZiplineConnectionService _ziplineConnections;
+    private readonly ZiplineGroupService _ziplineGroups;
 
     private readonly HashSet<Vector3Int> _nodes = new();
     private readonly HashSet<Vector3Int> _chargedNodes = new();
@@ -33,13 +39,10 @@ public class TeleporterNetwork : TeleporterLinkIndex, ILoadableSingleton, IPostL
     private readonly HashSet<Vector3Int> _pausedNodes = new();
     private readonly Dictionary<Vector3Int, TeleporterNode> _stations = new();
 
-    // wormhole groups the claim map must never read as real paths
-    private readonly HashSet<int> _skippedNavGroups = new();
-
     // which district's real paths reach each road node: DESIGN.md#path-reachability
     private Dictionary<int, int> _realClaim = new();
 
-    // where a beaver can walk, station wormholes included; built only while rings exist: DESIGN.md#ring-pairs
+    // where a beaver can walk, cables included; built only while rings exist: DESIGN.md#ring-pairs
     private Dictionary<int, int> _walkClaim = new();
 
     // set by the ring system while any ring is registered: DESIGN.md#ring-pairs
@@ -110,20 +113,19 @@ public class TeleporterNetwork : TeleporterLinkIndex, ILoadableSingleton, IPostL
 
     public TeleporterNetwork(INavMeshService navMeshService, NavMeshGroupService navMeshGroupService,
         DistrictCenterRegistry districtCenterRegistry, NodeIdService nodeIdService,
-        InstantRoadNavMeshSource instantRoadNavMeshSource, RoadNavMeshSource roadNavMeshSource,
-        PreviewRoadNavMeshSource previewRoadNavMeshSource,
-        InstantRoadNavMeshGraph instantRoadNavMeshGraph, TerrainNavMeshSource terrainNavMeshSource,
-        InstantTerrainNavMeshSource instantTerrainNavMeshSource,
-        PreviewTerrainNavMeshSource previewTerrainNavMeshSource, EntityRegistry entityRegistry,
-        EventBus eventBus)
-        : base(navMeshService, navMeshGroupService, nodeIdService, terrainNavMeshSource,
-              instantTerrainNavMeshSource, previewTerrainNavMeshSource, roadNavMeshSource,
-              instantRoadNavMeshSource, previewRoadNavMeshSource)
+        InstantRoadNavMeshGraph instantRoadNavMeshGraph, EntityRegistry entityRegistry,
+        EventBus eventBus, ZiplineConnectionService ziplineConnections,
+        ZiplineGroupService ziplineGroups, IBlockService blockService,
+        BresenhamLineDrawer bresenhamLines)
+        : base(navMeshService, navMeshGroupService, blockService, bresenhamLines)
     {
         _districtCenterRegistry = districtCenterRegistry;
+        _nodeIdService = nodeIdService;
         _instantRoadNavMeshGraph = instantRoadNavMeshGraph;
         _entityRegistry = entityRegistry;
         _eventBus = eventBus;
+        _ziplineConnections = ziplineConnections;
+        _ziplineGroups = ziplineGroups;
     }
 
     public void Load()
@@ -132,12 +134,6 @@ public class TeleporterNetwork : TeleporterLinkIndex, ILoadableSingleton, IPostL
         _claimsSettled = false;
         _eventBus.Register(this);
         Debug.Log($"[TeleporterStation] nav mesh group '{GroupName}' = {GroupId}");
-    }
-
-    // a wormhole group the claim map must never walk: DESIGN.md#ring-pairs
-    internal void SkipNavGroupInClaimMap(int groupId)
-    {
-        _skippedNavGroups.Add(groupId);
     }
 
     // the walk map costs a second BFS per refresh and only rings read it: DESIGN.md#ring-pairs
@@ -160,8 +156,12 @@ public class TeleporterNetwork : TeleporterLinkIndex, ILoadableSingleton, IPostL
         _conflicted = false;
         _live = false;
         RefreshLinks();
+        // the game reconnected pairs at load with fresh specs and left occupancy blocks on them: DESIGN.md#ring-pairs
+        SweepConnectionBlocks(
+            _stations.Values.Select(station => station.GetComponent<ZiplineTower>()).Where(t => t != null),
+            other => StationCoordsOf(other, out _));
+        LandOffMeshCharacters();
         SafeRestoreStrandedDistricts();
-        PulseDistrictAssignment();
         var uncharged = _nodes.Count - _chargedNodes.Count;
         Debug.Log($"[TeleporterStation] network ready: {Describe(_networkDistrict)}, " +
             $"{_nodes.Count} station(s), {LinkCount} link(s)" +
@@ -196,6 +196,27 @@ public class TeleporterNetwork : TeleporterLinkIndex, ILoadableSingleton, IPostL
     public void RegisterStation(Vector3Int coordinates, TeleporterNode station)
     {
         _stations[coordinates] = station;
+    }
+
+    // activations identify stations by their tower; the scan runs only on those rare events: DESIGN.md#crossing-detection-and-billing
+    internal bool StationCoordsOf(ZiplineTower tower, out Vector3Int coordinates)
+    {
+        foreach (var (cell, station) in _stations)
+        {
+            if (station.GetComponent<ZiplineTower>() == tower)
+            {
+                coordinates = cell;
+                return true;
+            }
+        }
+        coordinates = default;
+        return false;
+    }
+
+    // ownership checks route through the same scan: DESIGN.md#crossing-detection-and-billing
+    internal override bool CoordsOf(ZiplineTower tower, out Vector3Int coordinates)
+    {
+        return StationCoordsOf(tower, out coordinates);
     }
 
     public void Unregister(Vector3Int coordinates)
@@ -249,37 +270,10 @@ public class TeleporterNetwork : TeleporterLinkIndex, ILoadableSingleton, IPostL
         _stations.GetValueOrDefault(entry)?.RecordCrossing();
     }
 
-    // constant TIME per crossing: edge cost is seconds, so speed = span / seconds: DESIGN.md#travel-timed-crossings
-    internal override float EdgeCost(Vector3Int start, Vector3Int end)
-    {
-        return CrossingSeconds;
-    }
-
-    // the whole flight takes CrossingSeconds regardless of span: DESIGN.md#travel-timed-crossings
-    internal override float TransitSpeed(Vector3Int entry, Vector3Int exit)
-    {
-        return Vector3.Distance(AnchorWorld(entry), AnchorWorld(exit)) / CrossingSeconds;
-    }
-
-    // DIRECTIONAL: the station near the position boards, any live partner is the exit
-    internal override bool TryGetTimedLink(Vector3 world, out Vector3Int entry, out Vector3Int exit)
-    {
-        if (TryGetStationNear(world, 3f, out var station)
-            && TryGetFirstSibling(station, out var sibling))
-        {
-            entry = station;
-            exit = sibling;
-            return true;
-        }
-        entry = default;
-        exit = default;
-        return false;
-    }
-
-    // rescue, not equalizer: DESIGN.md#wormhole-siphon
-    internal const int RelayBatch = 5;
-    internal const int RelayDonorFloor = 20;
-    internal const int AutoRefillThreshold = 5;
+    // rescue, not equalizer; scaled with the 50x multiplier to keep the old crossing values: DESIGN.md#wormhole-siphon
+    internal const int RelayBatch = 1;
+    internal const int RelayDonorFloor = 4;
+    internal const int AutoRefillThreshold = 1;
 
     private bool _scanningAutoRefills;
 
@@ -381,7 +375,7 @@ public class TeleporterNetwork : TeleporterLinkIndex, ILoadableSingleton, IPostL
         return _realClaim.ContainsKey(_nodeIdService.GridToId(coordinates));
     }
 
-    // the beaver's answer: real paths plus the live network's walkable edges: DESIGN.md#ring-pairs
+    // the beaver's answer: real paths plus the game's ziplines: DESIGN.md#ring-pairs
     internal bool IsReachableByWalk(Vector3Int coordinates)
     {
         return _walkClaim.ContainsKey(_nodeIdService.GridToId(coordinates));
@@ -402,8 +396,8 @@ public class TeleporterNetwork : TeleporterLinkIndex, ILoadableSingleton, IPostL
         }
     }
 
-    // BFS from every finished center; stationEdgesCount lets the walk map cross station edges: DESIGN.md#path-reachability
-    private Dictionary<int, int> BuildClaimMap(bool stationEdgesCount)
+    // BFS from every finished center; only the walk map crosses cables and instant edges: DESIGN.md#path-reachability
+    private Dictionary<int, int> BuildClaimMap(bool crossZiplines)
     {
         var claims = new Dictionary<int, int>();
         var queue = new Queue<int>();
@@ -424,8 +418,8 @@ public class TeleporterNetwork : TeleporterLinkIndex, ILoadableSingleton, IPostL
             var current = queue.Dequeue();
             foreach (var neighbor in _instantRoadNavMeshGraph.GetNeighbors(current))
             {
-                if (neighbor.GroupId == GroupId && !stationEdgesCount
-                    || _skippedNavGroups.Contains(neighbor.GroupId))
+                if (!crossZiplines && (neighbor.GroupId == _ziplineGroups.RegularGroupId
+                    || neighbor.GroupId == GroupId))
                 {
                     continue;
                 }
@@ -455,12 +449,12 @@ public class TeleporterNetwork : TeleporterLinkIndex, ILoadableSingleton, IPostL
         }
     }
 
-    // the refresh: claim map, host district, liveness, then the edge diff
+    // the refresh: claim map, host district, liveness, then the connection diff: DESIGN.md#path-reachability
     private void RefreshLinks()
     {
-        _realClaim = BuildClaimMap(false);
+        _realClaim = BuildClaimMap(crossZiplines: false);
         // the walk map is unread while no rings exist; leaving the stale one is safe: DESIGN.md#ring-pairs
-        _walkClaim = _ringsExist ? BuildClaimMap(true) : _walkClaim;
+        _walkClaim = _ringsExist ? BuildClaimMap(crossZiplines: true) : _walkClaim;
 
         // the host is the SOLE district whose paths reach a station: DESIGN.md#one-network
         var first = -1;
@@ -585,31 +579,77 @@ public class TeleporterNetwork : TeleporterLinkIndex, ILoadableSingleton, IPostL
         return centerNodeId == -1 ? "none" : $"district #{centerNodeId}";
     }
 
-    // one queued add/remove edge forces the district reassignment: DESIGN.md#load-window
-    private void PulseDistrictAssignment()
+    // a character saved mid-span restores off-mesh and its load re-path would strand it: land it on a plate first: bugs/stuck-after-load
+    private void LandOffMeshCharacters()
     {
-        foreach (var coordinates in _nodes)
+        try
         {
-            if (!_realClaim.ContainsKey(_nodeIdService.GridToId(coordinates)))
+            var validators = new List<INavMeshProximityValidator>();
+            foreach (var entity in _entityRegistry.Entities)
             {
-                continue;
-            }
-            foreach (var neighbor in _instantRoadNavMeshGraph
-                         .GetNeighbors(_nodeIdService.GridToId(coordinates)))
-            {
-                if (neighbor.GroupId == GroupId || _skippedNavGroups.Contains(neighbor.GroupId))
+                var selectable = entity.GetComponent<SelectableObject>();
+                if (selectable == null)
                 {
                     continue;
                 }
-                var edge = NavMeshEdge.CreateGrouped(coordinates,
-                    _nodeIdService.IdToGrid(neighbor.Id), GroupId, isRoad: true, 0f);
-                _navMeshService.AddEdge(edge);
-                _navMeshService.RemoveEdge(edge);
-                Debug.Log("[TeleporterStation] district assignment pulse: " +
-                          $"{coordinates} <-> {_nodeIdService.IdToGrid(neighbor.Id)}");
-                return;
+                var character = selectable.GetComponent<Character>();
+                if (character == null || character.GameObject == null)
+                {
+                    continue;
+                }
+                character.GetComponents(validators);
+                var onMesh = false;
+                foreach (var validator in validators)
+                {
+                    if (validator.IsOnNavMesh())
+                    {
+                        onMesh = true;
+                        break;
+                    }
+                }
+                validators.Clear();
+                if (onMesh)
+                {
+                    continue;
+                }
+                var plate = NearestPlate(character.Transform.position);
+                if (plate == null)
+                {
+                    continue;
+                }
+                character.Transform.position = plate.Value;
+                var model = selectable.GetComponent<CharacterModel>();
+                if (model != null)
+                {
+                    model.Position = plate.Value;
+                }
+                Debug.Log($"[TeleporterStation] landed {character.GameObject.name} mid-transit " +
+                          $"at {plate.Value}");
             }
         }
+        catch (Exception e)
+        {
+            Debug.LogWarning($"[TeleporterStation] mid-transit landing failed: {e}");
+        }
+    }
+
+    // the mesh is fully connected, so the nearest station is an end of whatever span the character rode: bugs/stuck-after-load
+    private Vector3? NearestPlate(Vector3 position)
+    {
+        Vector3? nearest = null;
+        var best = float.PositiveInfinity;
+        foreach (var coordinates in _stations.Keys)
+        {
+            var plate = AnchorWorld(coordinates);
+            var distance = (plate - position).sqrMagnitude;
+            if (distance >= best)
+            {
+                continue;
+            }
+            best = distance;
+            nearest = plate;
+        }
+        return nearest;
     }
 
     // repairs characters a previous version left district-less: DESIGN.md#load-window
@@ -656,5 +696,44 @@ public class TeleporterNetwork : TeleporterLinkIndex, ILoadableSingleton, IPostL
         {
             Debug.LogWarning($"[TeleporterStation] district restore failed: {e}");
         }
+    }
+
+    // the wormhole pair is two flight spans, no cable: DESIGN.md#travel-every-crossing-is-an-instant-jump
+    internal override bool WritePair(Vector3Int start, Vector3Int end, bool add)
+    {
+        var towerA = _stations.GetValueOrDefault(start)?.GetComponent<ZiplineTower>();
+        var towerB = _stations.GetValueOrDefault(end)?.GetComponent<ZiplineTower>();
+        if (towerA == null || towerB == null)
+        {
+            return false;
+        }
+        if (add)
+        {
+            // flights are the wormhole's only crossing; the span edge is the whole pair write: DESIGN.md#travel-every-crossing-is-an-instant-jump
+            WriteInstantEdge(towerA, towerB, true);
+            return true;
+        }
+        WriteInstantEdge(towerA, towerB, false);
+        if (towerA.IsConnectedTo(towerB))
+        {
+            _ziplineConnections.Disconnect(towerA, towerB);
+            Debug.Log($"[TeleporterStation] station zipline {start} -> {end} disconnected");
+        }
+        return true;
+    }
+
+    // the priced span edge is the crossing; the game's zipline transformer claims only its own regular group: DESIGN.md#travel-every-crossing-is-an-instant-jump
+    private void WriteInstantEdge(ZiplineTower towerA, ZiplineTower towerB, bool add)
+    {
+        var a = towerA.CableAnchorPointInt;
+        var b = towerB.CableAnchorPointInt;
+        if (add)
+        {
+            _navMeshService.AddEdge(NavMeshEdge.CreateGrouped(a, b, GroupId, isRoad: true, EdgeCost));
+            _navMeshService.AddEdge(NavMeshEdge.CreateGrouped(b, a, GroupId, isRoad: true, EdgeCost));
+            return;
+        }
+        _navMeshService.RemoveEdge(NavMeshEdge.CreateGrouped(a, b, GroupId, isRoad: true, EdgeCost));
+        _navMeshService.RemoveEdge(NavMeshEdge.CreateGrouped(b, a, GroupId, isRoad: true, EdgeCost));
     }
 }

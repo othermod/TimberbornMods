@@ -19,15 +19,16 @@ public class TeleporterConfigurator : Configurator
     {
         Bind<TeleporterNetwork>().AsSingleton();
         Bind<RingNetwork>().AsSingleton();
+        Bind<TeleporterCableVeil>().AsSingleton();
         Bind<RingPairingState>().AsSingleton();
         Bind<TeleporterHighlightService>().AsSingleton();
         Bind<RingPairingFlow>().AsSingleton();
         Bind<RingConnectionLine>().AsSingleton();
+        Bind<TeleporterSaveCompat>().AsSingleton();
         Bind<TeleporterNode>().AsTransient();
         Bind<RingNode>().AsTransient();
         Bind<RingPausableMarker>().AsTransient();
         Bind<TeleporterTransitTracker>().AsTransient();
-        Bind<RingTransitVisual>().AsTransient();
         Bind<OutOfExtractStatus>().AsTransient();
         Bind<TeleporterConnectivityStatus>().AsTransient();
         Bind<TeleporterRequirementsDescriber>().AsTransient();
@@ -40,8 +41,8 @@ public class TeleporterConfigurator : Configurator
         // the mod's placement rules join the game's own pipeline: DESIGN.md#one-network, DESIGN.md#ring-pairs
         MultiBind<IBlockObjectValidator>().To<TeleporterPlacementValidator>().AsSingleton();
         MultiBind<IBlockObjectValidator>().To<RingPlacementValidator>().AsSingleton();
-        // every crossing, station or ring, joins the game's path transformers: DESIGN.md#travel-timed-crossings
-        MultiBind<IPathTransformer>().To<TeleporterPathTransformer>().AsSingleton();
+        // the instant flight rewriter joins the game's path pipeline: DESIGN.md#travel-every-crossing-is-an-instant-jump
+        MultiBind<IPathTransformer>().To<TeleporterFlightTransformer>().AsSingleton();
         MultiBind<TemplateModule>().ToProvider<TemplateModuleProvider>().AsSingleton();
         MultiBind<EntityPanelModule>().ToProvider<EntityPanelModuleProvider>().AsSingleton();
     }
@@ -67,8 +68,6 @@ public class TeleporterConfigurator : Configurator
             builder.AddDecorator<TeleporterSpec, TeleporterConnectivityStatus>();
             builder.AddDecorator<TeleporterSpec, TeleporterRequirementsDescriber>();
             builder.AddDecorator<Character, TeleporterTransitTracker>();
-            // the wormhole traveller visual rides every character: DESIGN.md#ring-transit
-            builder.AddDecorator<Character, RingTransitVisual>();
             builder.AddDedicatedDecorator(_chargeStoreInitializer);
             builder.AddDecorator<TeleporterSpec, Emptiable>();
             builder.AddDecorator<TeleporterSpec, EmptyInventoriesWorkplaceBehavior>();
