@@ -40,7 +40,9 @@ from pathlib import Path
 MOD_ROOT = Path(__file__).resolve().parents[1]
 
 # Tile is 1x1 world units with the origin at its corner; X/Z horizontal, Y up.
-R_MAJOR, R_MINOR = 0.44, 0.075   # ring outer radius 0.515 ~= fills the 1x1 tile
+R_MAJOR, R_MINOR = 0.42, 0.075   # outer radius 0.495: crown at 0.99, sides at
+                                  # 0.005..0.995, all inside the cell so a
+                                  # platform over the station never fights it
 CX, CY, CZ = 0.5, R_MAJOR + R_MINOR, 0.5  # ring center: bottom touches the tile floor
 U_SEG, V_SEG = 64, 16
 HORIZON_R = R_MAJOR - R_MINOR    # horizon fills the ring bore exactly (no gap)
@@ -55,7 +57,6 @@ RAMP_RUN = 0.32                  # run of each slope; the plateau between the
 RAMP_CHAMFER = 0.06              # side inset: adjacent ramps form a V-groove
 RAIL_H = 0.32                    # hand-rail height above the walking surface
 RAIL_HALF = 0.017                # rail bar / post cross-section half-width
-RAIL_X = 0.14                    # rail offset from the tile edge
 # Event-horizon swirl: a dark void disc plus bright spiral arm strips in child
 # nodes carrying a "Spin" node animation. The game lerps node rotations with
 # Quaternion.Lerp, which does NOT take the shortest path across the ±180°
@@ -525,7 +526,9 @@ def rails(variant: dict):
     ramp gets none: it is the exit face, not an entrance. Lives in its own
     node so the mesh viewer's ring-pattern override can retune the torus UVs
     without touching the rail texels. Pinned to a bright panel texel of the
-    ring material so the rails match whatever the torus samples."""
+    ring material so the rails match whatever the torus samples. The bars
+    ride the tube's midline planes (x = CX +/- R_MAJOR), so the landing end
+    sockets into the tube's flank instead of stopping short of it."""
     verts, norms, uvs, idx = [], [], [], []
     rail_uv = (variant["rail_u"], 0.5)
     # z=0 is the building's front in game (the side the placement camera
@@ -533,7 +536,7 @@ def rails(variant: dict):
     for z_far in (0.0,):
         sgn = 1.0 if z_far < CZ else -1.0
         z_top = CZ - sgn * RAMP_RUN
-        for sx in (RAIL_X, 1.0 - RAIL_X):
+        for sx in (CX - R_MAJOR, CX + R_MAJOR):
             z_edge = z_far + sgn * 0.05
             _rail_box(verts, norms, uvs, idx,
                       (sx, RAIL_H, z_edge), (sx, RAIL_H + RAMP_H, z_top),

@@ -61,60 +61,21 @@
             "IsTwoWay": false
           }
         ]
-      },
-      {
-        "Cost": 0.0,
-        "Group": {
-          "UseGroup": true,
-          "GroupName": "TeleporterStep"
-        },
-        "IsPath": true,
-        "AddedEdges": [
-          {
-            "Start": {
-              "X": 0,
-              "Y": 0,
-              "Z": 0
-            },
-            "End": {
-              "X": 0,
-              "Y": 0,
-              "Z": 1
-            },
-            "IsTwoWay": true
-          }
-        ]
       }
     ],
-    "UnblockedCoordinates": [
-      {
-        "Group": "TeleporterStep",
-        "Coordinates": {
-          "X": 0,
-          "Y": 0,
-          "Z": 1
-        }
-      }
-    ],
+    "UnblockedCoordinates": [],
     "BlockedEdges": []
   },
   "BlockObjectSpec": {
     "Size": {
       "X": 1,
       "Y": 1,
-      "Z": 2
+      "Z": 1
     },
     "Blocks": [
       {
         "MatterBelow": "GroundOrStackable",
-        "Occupations": "Bottom, Top, Corners, Path, Middle",
-        "Stackable": "None",
-        "OccupyAllBelow": false,
-        "Underground": false
-      },
-      {
-        "MatterBelow": "Any",
-        "Occupations": "All",
+        "Occupations": "Bottom, Path, Middle",
         "Stackable": "None",
         "OccupyAllBelow": false,
         "Underground": false
@@ -175,13 +136,7 @@
     ]
   },
   "BlockObjectAccessesSpec": {
-    "BlockingCoordinates": [
-      {
-        "X": 0,
-        "Y": 0,
-        "Z": 1
-      }
-    ],
+    "BlockingCoordinates": [],
     "AllowedCoordinates": [
       {
         "X": 0,
@@ -250,7 +205,7 @@
   "ZiplineTowerSpec": {
     "CableAnchorPoint": {
       "X": 0.5,
-      "Y": 1.85,
+      "Y": 0.85,
       "Z": 0.5
     },
     "MaxConnections": 99,

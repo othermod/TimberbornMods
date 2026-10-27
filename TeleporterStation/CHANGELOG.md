@@ -1,8 +1,27 @@
 # Changelog
 
 Player-visible changes per version, written for the Workshop. Internal
-work (docs, tooling, process) stays out. Costs are quoted from the
-blueprints and verified at each release.
+work (docs, tooling, process) stays out. Each version's entries state
+what changed: new capabilities, behavior that differs from the previous
+version, and fixes for bugs players could see. Costs are quoted from
+the blueprints and verified at each release.
+
+## 0.5.1
+
+The Wormhole Station takes a single tile now, and a path platform can
+be built over it.
+
+### New
+
+- A path platform can be built directly over a Wormhole Station now,
+  like over a Ring Station.
+
+### Changed
+
+- The Wormhole Station occupies a single flat tile now, down from two.
+  Boarding and crossings work the same as before.
+- The gate stands a touch smaller and its handrails sit slightly
+  wider, so a platform over it meets clean edges.
 
 ## 0.5.0
 
@@ -36,7 +55,6 @@ mod's own machinery.
   wander off through the air.
 - Placing a teleporter beside a district center or another teleporter
   no longer fails with a false warning about a second district.
-- Saves from 0.4.0 keep loading.
 
 ## 0.4.0
 
