@@ -1,0 +1,10 @@
+{
+  "AuthorName": "othermod",
+  "Name": "Spurge",
+  "Version": "0.1.0",
+  "Id": "othermod.Spurge",
+  "MinimumGameVersion": "1.1.0.0",
+  "Description": "The Spurge is a new desert plant, inspired by the succulent.\n\nLike the succulent, the Forester plants it on dry, clean ground, and it will only germinate there. After 65 days it can be felled for 2 Water. Clean water and green soil are lethal to the plant.\n\nUnlike the succulent, it tolerates contaminated soil and even shallow badwater after germination, and will continue to grow.\n\nIt enters the fruiting phase once fully grown. On dry ground, fresh Badwater is ready every 40 days.\n\nDuring the fruiting phase, photosynthesis is turbocharged by exposure to badwater.\n\n[list]\n[*]On contaminated soil, it produces Badwater twice as fast (every 20 days).\n[*]In shallow badwater, it produces Badwater four times as fast (every 10 days).\n[/list]\n\nThe Tapper's Shack taps it for 4 Badwater.\n\n[h1]Support[/h1]\n[list]\n[*]Report problems on the Workshop page or on GitHub, at othermod/Timberborn-Spurge.\n[*]Balance reports are welcome.\n[*]If the spurge keeps your badwater barrels full, tip the engineer on Patreon, PayPal, or Buy Me a Coffee. All three live on [url=https://linktr.ee/othermod]linktr.ee/othermod[/url].\n[/list]",
+  "RequiredMods": [],
+  "OptionalMods": []
+}

@@ -1,0 +1,8 @@
+{
+  "TemplateCollectionSpec": {
+    "CollectionId": "Common",
+    "Blueprints": [
+      "Buildings/NaturalResources/Trees/Spurge/Spurge.blueprint"
+    ]
+  }
+}

@@ -1,0 +1,296 @@
+{
+  "BlockObjectSpec": {
+    "Size": {
+      "X": 1,
+      "Y": 1,
+      "Z": 2
+    },
+    "Blocks": [
+      {
+        "MatterBelow": "Ground",
+        "Occupations": "All",
+        "Stackable": "None",
+        "OccupyAllBelow": false,
+        "Underground": false
+      },
+      {
+        "MatterBelow": "Any",
+        "Occupations": "Floor, Bottom, Corners, Path, Middle",
+        "Stackable": "None",
+        "OccupyAllBelow": false,
+        "Underground": false
+      }
+    ],
+    "Entrance": {
+      "HasEntrance": false,
+      "Coordinates": {
+        "X": 0,
+        "Y": 0,
+        "Z": 0
+      }
+    },
+    "BaseZ": 0,
+    "Overridable": false,
+    "Flippable": false
+  },
+  "TemplateSpec": {
+    "TemplateName": "Spurge",
+    "BackwardCompatibleTemplateNames": [],
+    "RequiredFeatureToggle": "",
+    "DisablingFeatureToggle": ""
+  },
+  "NaturalResourceSpec": {
+    "Order": 9
+  },
+  "TreeComponentSpec": {},
+  "TreeCuttingRadiusSpec": {
+    "Radius": 0.2
+  },
+  "GrowableSpec": {
+    "GrowthTimeInDays": 65.0
+  },
+  "BasicSelectionSoundSpec": {
+    "SoundName": "Tree",
+    "AlternativeSoundName": ""
+  },
+  "PlantableSpec": {
+    "ResourceGroup": "Forester",
+    "PlantTimeInHours": 0.5
+  },
+  "DemolishableSpec": {
+    "DemolishTimeInHours": 1.2,
+    "ShowDemolishButtonInEntityPanel": false
+  },
+  "PlantablePreviewModelSpec": {
+    "Model": "NaturalResources/Trees/Spurge/Mesh/SpurgeMature"
+  },
+  "LabeledEntitySpec": {
+    "DisplayNameLocKey": "NaturalResource.Spurge.DisplayName",
+    "DescriptionLocKey": "",
+    "FlavorDescriptionLocKey": "NaturalResource.Spurge.FlavorDescription",
+    "Icon": "NaturalResources/Trees/Spurge/SpurgeIcon"
+  },
+  "FloodableNaturalResourceSpec": {
+    "MinWaterHeight": 0,
+    "MaxWaterHeight": 1,
+    "DaysToDie": 16.0
+  },
+  "NaturalResourceModelRandomizerSpec": {
+    "ConstrainProportion": false,
+    "MinHeightScaleFactor": 0.7,
+    "MaxHeightScaleFactor": 1.0,
+    "MinWidthScaleFactor": 0.9,
+    "MaxWidthScaleFactor": 1.1,
+    "RandomizedRotation": "BetweenMinAndMax",
+    "MinRotation": 0.0,
+    "MaxRotation": 360.0
+  },
+  "BlockObjectModelSpec": {
+    "FullModelName": "#Models",
+    "UncoveredModelName": "",
+    "UndergroundModelName": "",
+    "UndergroundModelDepth": 0
+  },
+  "AridNaturalResourceSpec": {
+    "DaysToDieWet": 8.0
+  },
+  "GatherableSpec": {
+    "YieldGrowthTimeInDays": 40.0,
+    "Yielder": {
+      "YielderComponentName": "Gatherable",
+      "Yield": {
+        "Id": "Badwater",
+        "Amount": 4
+      },
+      "RemovalTimeInHours": 1.0,
+      "ResourceGroup": "Tappable"
+    }
+  },
+  "CuttableSpec": {
+    "RemoveOnCut": false,
+    "LeftoverModelName": "#Leftover",
+    "Yielder": {
+      "YielderComponentName": "Cuttable",
+      "Yield": {
+        "Id": "Water",
+        "Amount": 2
+      },
+      "RemovalTimeInHours": 1.5,
+      "ResourceGroup": "Cuttable"
+    }
+  },
+  "YielderNeedApplierSpec": {
+    "Effects": [
+      {
+        "NeedId": "Injury",
+        "Points": -1.0,
+        "Probability": "Medium"
+      }
+    ]
+  },
+  "SpurgeSpec": {
+    "ContaminatedSoilSpeedMultiplier": 2.0,
+    "BadwaterSpeedMultiplier": 4.0
+  },
+  "Children": {
+    "#Models": {
+      "Children": {
+        "Seedling": {
+          "Children": {
+            "#Alive": {
+              "TimbermeshSpec": {
+                "Model": "NaturalResources/Trees/Spurge/Mesh/SpurgeSeedling"
+              },
+              "CollidersSpec": {
+                "BoxColliders": [],
+                "SphereColliders": [],
+                "CapsuleColliders": [
+                  {
+                    "Center": {
+                      "X": 0.5,
+                      "Y": 0.22,
+                      "Z": 0.5
+                    },
+                    "Radius": 0.127,
+                    "Height": 0.739,
+                    "Axis": "Y"
+                  }
+                ]
+              }
+            },
+            "#Dead": {
+              "TimbermeshSpec": {
+                "Model": "NaturalResources/Trees/Spurge/Mesh/SpurgeSeedlingDead"
+              },
+              "CollidersSpec": {
+                "BoxColliders": [],
+                "SphereColliders": [],
+                "CapsuleColliders": [
+                  {
+                    "Center": {
+                      "X": 0.5,
+                      "Y": 0.005,
+                      "Z": 0.5
+                    },
+                    "Radius": 0.084,
+                    "Height": 0.31,
+                    "Axis": "Y"
+                  }
+                ]
+              }
+            },
+            "#Dying": {
+              "TimbermeshSpec": {
+                "Model": "NaturalResources/Trees/Spurge/Mesh/SpurgeSeedlingDry"
+              },
+              "CollidersSpec": {
+                "BoxColliders": [],
+                "SphereColliders": [],
+                "CapsuleColliders": [
+                  {
+                    "Center": {
+                      "X": 0.5,
+                      "Y": 0.185,
+                      "Z": 0.5
+                    },
+                    "Radius": 0.171,
+                    "Height": 0.67,
+                    "Axis": "Y"
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "Mature": {
+          "Children": {
+            "#Alive": {
+              "TimbermeshSpec": {
+                "Model": "NaturalResources/Trees/Spurge/Mesh/SpurgeMature"
+              },
+              "CollidersSpec": {
+                "BoxColliders": [],
+                "SphereColliders": [],
+                "CapsuleColliders": [
+                  {
+                    "Center": {
+                      "X": 0.5,
+                      "Y": 0.522,
+                      "Z": 0.5
+                    },
+                    "Radius": 0.283,
+                    "Height": 1.464,
+                    "Axis": "Y"
+                  }
+                ]
+              }
+            },
+            "#Dead": {
+              "TimbermeshSpec": {
+                "Model": "NaturalResources/Trees/Spurge/Mesh/SpurgeMatureDead"
+              },
+              "CollidersSpec": {
+                "BoxColliders": [],
+                "SphereColliders": [],
+                "CapsuleColliders": [
+                  {
+                    "Center": {
+                      "X": 0.5,
+                      "Y": 0.295,
+                      "Z": 0.5
+                    },
+                    "Radius": 0.216,
+                    "Height": 0.97,
+                    "Axis": "Y"
+                  }
+                ]
+              }
+            },
+            "#Dying": {
+              "TimbermeshSpec": {
+                "Model": "NaturalResources/Trees/Spurge/Mesh/SpurgeMatureDry"
+              },
+              "CollidersSpec": {
+                "BoxColliders": [],
+                "SphereColliders": [],
+                "CapsuleColliders": [
+                  {
+                    "Center": {
+                      "X": 0.5,
+                      "Y": 0.502,
+                      "Z": 0.5
+                    },
+                    "Radius": 0.327,
+                    "Height": 1.425,
+                    "Axis": "Y"
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "#Leftover": {
+          "TimbermeshSpec": {
+            "Model": "NaturalResources/Trees/Spurge/Mesh/SpurgeMatureStump"
+          },
+          "CollidersSpec": {
+            "BoxColliders": [],
+            "SphereColliders": [],
+            "CapsuleColliders": [
+              {
+                "Center": {
+                  "X": 0.5,
+                  "Y": 0.015,
+                  "Z": 0.5
+                },
+                "Radius": 0.143,
+                "Height": 0.41,
+                "Axis": "Y"
+              }
+            ]
+          }
+        }
+      }
+    }
+  }
+}
